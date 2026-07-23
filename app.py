@@ -48,7 +48,7 @@ with col1:
         help="Selecciona el país del modelo"
     )
     pais = PAIS_MAP[pais_display]
-    
+
     cartera_display = st.selectbox(
         "Cartera",
         options=list(CARTERA_MAP.keys()),
@@ -63,7 +63,7 @@ with col2:
         options=["actual", "media_movil"],
         help="'actual': valor original | 'media_movil': promedio móvil"
     )
-    
+
     if modo_endo == "media_movil":
         ventana_mm = st.slider(
             "Ventana de media móvil (meses)",
@@ -89,7 +89,7 @@ with col1:
         value=True,
         help="Activar para usar: 2018-10-01 a 2025-03-01"
     )
-    
+
     if usar_fechas_default:
         fecha_inicio = "2018-10-01"
         fecha_fin = "2025-03-01"
@@ -113,11 +113,11 @@ with col2:
         value=False,
         help="Si marcas esto, puedes personalizar los nombres"
     )
-    
+
     if editar_nombres:
         nombres_sugeridos = generar_nombres_archivos(pais, cartera)
         st.warning("⚠️ Cambiar el formato puede romper el flujo. Procede con cuidado.")
-        
+
         col_h, col_o = st.columns(2)
         with col_h:
             archivo_hist = st.text_input(
@@ -137,7 +137,7 @@ with col2:
                 "Nombre archivo adverso",
                 value=nombres_sugeridos["adv"]
             )
-        
+
         nombres_custom = {
             "hist": archivo_hist,
             "opt": archivo_opt,
@@ -187,13 +187,13 @@ Para modificarlos, edita directamente en el notebook.
 st.markdown("---")
 
 if st.button("🚀 Generar Notebooks", use_container_width=True, type="primary"):
-    
+
     try:
-        # Generar nombres de archivos
+        # Generar nombres de archivos (usamos cartera código para lógica interna)
         archivos = generar_nombres_archivos(pais, cartera)
         if nombres_custom:
             archivos = nombres_custom
-        
+
         # Generar notebook del GENERADOR
         st.info("Generando notebook del Generador...")
         nb_gen = generar_notebook_generador(
@@ -206,7 +206,7 @@ if st.button("🚀 Generar Notebooks", use_container_width=True, type="primary")
             ventana_mm=ventana_mm,
             nombres_custom=nombres_custom,
         )
-        
+
         # Generar notebook del MOTOR
         st.info("Generando notebook del Motor...")
         nb_motor = generar_notebook_motor(
@@ -217,36 +217,37 @@ if st.button("🚀 Generar Notebooks", use_container_width=True, type="primary")
             max_lags=max_lags,
             nombres_archivos=archivos,
         )
-        
-        # Nombres de salida
-        nb_gen_name = f"Generacion_Variacion_{pais}_{cartera}.ipynb"
-        nb_motor_name = f"Motor_Sarimax_{cartera}_{pais}.ipynb"
-        
+
+        # Nombres de salida: usamos cartera_display para que refleje lo que el usuario seleccionó
+        cartera_slug = cartera_display.lower().replace(" ", "_")
+        nb_gen_name = f"Generacion_Variacion_{pais}_{cartera_slug}.ipynb"
+        nb_motor_name = f"Motor_Sarimax_{cartera_slug}_{pais}.ipynb"
+
         # Convertir notebooks a JSON (string) para descarga individual
         nb_gen_json = json.dumps(nb_gen, ensure_ascii=False, indent=1)
         nb_motor_json = json.dumps(nb_motor, ensure_ascii=False, indent=1)
-        
+
         # Mostrar resumen
         st.success("✅ Notebooks generados correctamente")
-        
+
         st.markdown("### 📦 Resumen de configuración")
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("País", pais)
         with col2:
-            st.metric("Cartera", cartera)
+            st.metric("Cartera", cartera_display)  # ← FIX: muestra el nombre que el usuario seleccionó
         with col3:
             st.metric("Modelo", tipo_modelo)
         with col4:
             st.metric("Max Lags", max_lags)
-        
+
         st.markdown("### 📥 Descargar o abrir en Google Colab")
-        
+
         # --- NOTEBOOK GENERADOR ---
         st.markdown("#### 📋 Generador de Variación")
-        
+
         col_gen1, col_gen2 = st.columns(2)
-        
+
         with col_gen1:
             st.download_button(
                 label=f"💾 Descargar {nb_gen_name}",
@@ -255,7 +256,7 @@ if st.button("🚀 Generar Notebooks", use_container_width=True, type="primary")
                 mime="application/json",
                 use_container_width=True,
             )
-        
+
         with col_gen2:
             # Codificar el notebook en base64 para el link de Colab
             nb_gen_b64 = base64.b64encode(nb_gen_json.encode("utf-8")).decode("utf-8")
@@ -265,12 +266,12 @@ if st.button("🚀 Generar Notebooks", use_container_width=True, type="primary")
                 url=colab_url_gen,
                 use_container_width=True,
             )
-        
+
         # --- NOTEBOOK MOTOR ---
         st.markdown("#### ⚙️ Motor SARIMAX")
-        
+
         col_mot1, col_mot2 = st.columns(2)
-        
+
         with col_mot1:
             st.download_button(
                 label=f"💾 Descargar {nb_motor_name}",
@@ -279,7 +280,7 @@ if st.button("🚀 Generar Notebooks", use_container_width=True, type="primary")
                 mime="application/json",
                 use_container_width=True,
             )
-        
+
         with col_mot2:
             # Codificar el notebook en base64 para el link de Colab
             nb_motor_b64 = base64.b64encode(nb_motor_json.encode("utf-8")).decode("utf-8")
@@ -289,7 +290,7 @@ if st.button("🚀 Generar Notebooks", use_container_width=True, type="primary")
                 url=colab_url_motor,
                 use_container_width=True,
             )
-        
+
     except Exception as e:
         st.error(f"❌ Error al generar notebooks:\n{str(e)}")
         st.exception(e)
