@@ -50,12 +50,6 @@ def reemplazar_en_celda(source: str, reemplazos: Dict[str, str]) -> str:
     """
     Reemplaza valores en una celda de código.
     Los reemplazos son: {"VARIABLE": "nuevo_valor"}
-    
-    Ejemplo:
-      reemplazos = {
-        "PAIS": '"PA"',
-        "MAX_LAGS": "5",
-      }
     """
     import re
     
@@ -72,7 +66,6 @@ def reemplazar_en_celda(source: str, reemplazos: Dict[str, str]) -> str:
         line_modified = False
         for var, valor in reemplazos.items():
             # Buscar: VAR (con espacios flexibles) = 
-            # Usar regex para ser flexible con espacios
             pattern = rf'^(\s*){var}\s*='
             if re.search(pattern, line) and not line_modified:
                 # Conservar indentación
@@ -90,6 +83,35 @@ def reemplazar_en_celda(source: str, reemplazos: Dict[str, str]) -> str:
     return '\n'.join(new_lines)
 
 
+def _ensure_source_list(cell_source):
+    """
+    Asegura que el source de una celda sea una lista de strings.
+    Los notebooks Jupyter requieren source como lista de strings.
+    """
+    if isinstance(cell_source, list):
+        # Si ya es lista, asegurar que cada elemento termine con \n excepto el último
+        result = []
+        for i, line in enumerate(cell_source):
+            if i < len(cell_source) - 1:
+                if not line.endswith('\n'):
+                    line = line + '\n'
+            result.append(line)
+        return result
+    elif isinstance(cell_source, str):
+        # Si es string, convertir a lista preservando saltos de línea
+        lines = cell_source.split('\n')
+        result = []
+        for i, line in enumerate(lines):
+            if i < len(lines) - 1:
+                result.append(line + '\n')
+            else:
+                # Última línea: solo agregar \n si el original terminaba con \n
+                result.append(line)
+        return result
+    else:
+        return [str(cell_source)]
+
+
 def generar_notebook_generador(
     template_path: str,
     pais: str,
@@ -102,19 +124,6 @@ def generar_notebook_generador(
 ) -> Dict:
     """
     Carga el notebook template del generador y reemplaza los parámetros.
-    
-    Args:
-        template_path: ruta al Generacion_Variacion__2_.ipynb
-        pais: código país (CO, PA, CR)
-        cartera: código cartera (vivi, cons, tc, etc.)
-        fecha_inicio: YYYY-MM-DD
-        fecha_fin: YYYY-MM-DD
-        modo_endo: "actual" o "media_movil"
-        ventana_mm: número (1-12)
-        nombres_custom: dict con keys "hist", "opt", "base", "adv" si quiere overridear
-    
-    Returns:
-        Notebook modificado (dict)
     """
     with open(template_path, 'r', encoding='utf-8') as f:
         nb = json.load(f)
@@ -142,27 +151,14 @@ def generar_notebook_generador(
     # Reemplaza en celda 4
     for i, cell in enumerate(nb['cells']):
         if i == 4 and cell['cell_type'] == 'code':
-            # Convertir source a string si es lista
-            if isinstance(cell['source'], list):
-                source = ''.join(cell['source'])
-            else:
-                source = cell['source']
-            
-            # Hacer el reemplazo
+            source = ''.join(cell['source']) if isinstance(cell['source'], list) else cell['source']
             source = reemplazar_en_celda(source, reemplazos_celda4)
-            
-            # Guardar de vuelta como lista (formato de notebook)
-            nb['cells'][i]['source'] = source.split('\n')
+            nb['cells'][i]['source'] = _ensure_source_list(source)
     
     # Reemplaza en celda 7 (carga de exógenas)
     for i, cell in enumerate(nb['cells']):
         if i == 7 and cell['cell_type'] == 'code':
-            if isinstance(cell['source'], list):
-                source = ''.join(cell['source'])
-            else:
-                source = cell['source']
-            
-            # Buscar y reemplazar la línea de lectura de archivo
+            source = ''.join(cell['source']) if isinstance(cell['source'], list) else cell['source']
             lines = source.split('\n')
             new_lines = []
             for line in lines:
@@ -171,7 +167,7 @@ def generar_notebook_generador(
                 else:
                     new_lines.append(line)
             source = '\n'.join(new_lines)
-            nb['cells'][i]['source'] = source.split('\n')
+            nb['cells'][i]['source'] = _ensure_source_list(source)
     
     return nb
 
@@ -186,17 +182,6 @@ def generar_notebook_motor(
 ) -> Dict:
     """
     Carga el notebook template del motor y reemplaza los parámetros.
-    
-    Args:
-        template_path: ruta al Motor_Sarimax_Vivi_CO__1_.ipynb
-        pais: código país (CO, PA, CR)
-        cartera: código cartera (vivi, cons, tc, etc.)
-        tipo_modelo: "total" o "logit"
-        max_lags: número (1-12)
-        nombres_archivos: dict con keys "hist", "opt", "base", "adv"
-    
-    Returns:
-        Notebook modificado (dict)
     """
     with open(template_path, 'r', encoding='utf-8') as f:
         nb = json.load(f)
@@ -213,13 +198,9 @@ def generar_notebook_motor(
     
     for i, cell in enumerate(nb['cells']):
         if i == 4 and cell['cell_type'] == 'code':
-            if isinstance(cell['source'], list):
-                source = ''.join(cell['source'])
-            else:
-                source = cell['source']
-            
+            source = ''.join(cell['source']) if isinstance(cell['source'], list) else cell['source']
             source = reemplazar_en_celda(source, reemplazos_celda4)
-            nb['cells'][i]['source'] = source.split('\n')
+            nb['cells'][i]['source'] = _ensure_source_list(source)
     
     # Parámetros en la CELDA 9 (motor de modelos SARIMAX)
     cartera_label = CARTERA_LABEL.get(cartera, cartera)
@@ -234,13 +215,9 @@ def generar_notebook_motor(
     
     for i, cell in enumerate(nb['cells']):
         if i == 9 and cell['cell_type'] == 'code':
-            if isinstance(cell['source'], list):
-                source = ''.join(cell['source'])
-            else:
-                source = cell['source']
-            
+            source = ''.join(cell['source']) if isinstance(cell['source'], list) else cell['source']
             source = reemplazar_en_celda(source, reemplazos_celda9)
-            nb['cells'][i]['source'] = source.split('\n')
+            nb['cells'][i]['source'] = _ensure_source_list(source)
     
     return nb
 
@@ -249,3 +226,67 @@ def guardar_notebook(nb: Dict, output_path: str) -> None:
     """Guarda un notebook a disco."""
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(nb, f, ensure_ascii=False, indent=1)
+
+
+# ==================== METADATA EMBEBIDA ====================
+
+def escribir_meta_embebida(file_path: str, meta: Dict, prefix: str = "sarimax_meta") -> None:
+    """
+    Escribe metadata embebida en un archivo Excel usando custom properties.
+    
+    Args:
+        file_path: ruta al archivo Excel
+        meta: diccionario con metadata (pais, cartera, modo_endogena, ventana_mm, tipo_modelo, etc.)
+        prefix: prefijo para las propiedades custom
+    """
+    import openpyxl
+    
+    wb = openpyxl.load_workbook(file_path)
+    
+    # Convertir metadata a JSON string
+    meta_json = json.dumps(meta, ensure_ascii=False)
+    
+    # Dividir en chunks de max 255 chars (límite de custom props en Excel)
+    chunk_size = 255
+    chunks = [meta_json[i:i+chunk_size] for i in range(0, len(meta_json), chunk_size)]
+    
+    # Guardar número de chunks
+    wb.custom_doc_props.add(f"{prefix}_n", len(chunks), "int")
+    
+    # Guardar cada chunk
+    for idx, chunk in enumerate(chunks, 1):
+        prop_name = f"{prefix}_{idx:02d}"
+        # Eliminar si ya existe
+        if prop_name in wb.custom_doc_props.names:
+            del wb.custom_doc_props[prop_name]
+        wb.custom_doc_props.add(prop_name, chunk, "str")
+    
+    wb.save(file_path)
+    wb.close()
+
+
+def generar_meta_dict(
+    pais: str,
+    cartera: str,
+    modo_endogena: str = None,
+    ventana_mm: int = None,
+    tipo_modelo: str = None,
+    vif_max: float = None,
+    fwl_factor_min: float = None,
+    fwl_factor_max: float = None,
+    max_exog_por_modelo: int = None,
+) -> Dict:
+    """
+    Genera un diccionario de metadata estandarizado para los notebooks.
+    """
+    return {
+        "pais": pais,
+        "cartera": cartera,
+        "generador_modo_endogena": modo_endogena,
+        "generador_ventana_mm": ventana_mm,
+        "motor_tipo_endogena": tipo_modelo,
+        "motor_vif_max": vif_max,
+        "motor_fwl_factor_min": fwl_factor_min,
+        "motor_fwl_factor_max": fwl_factor_max,
+        "motor_max_exog_por_modelo": max_exog_por_modelo,
+    }
