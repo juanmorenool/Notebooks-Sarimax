@@ -1608,7 +1608,15 @@ with tab_dash:
                     with c1:
                         st.markdown(card_kpi("Modo endogena", meta_kpis.get('modo_endogena', '-')), unsafe_allow_html=True)
                     with c2:
-                        st.markdown(card_kpi("Top exportados", meta_kpis.get('top_exportar', '-')), unsafe_allow_html=True)
+                        tipo_endog = meta_kpis.get('tipo_endogena', '-')
+                        # Mostrar en mayusculas y con color si es logit
+                        if tipo_endog == 'logit':
+                            tipo_display = f"<span style='color:#1E5AA8;font-weight:700;'>{tipo_endog.upper()}</span>"
+                        elif tipo_endog == 'total':
+                            tipo_display = f"<span style='color:#1A6B3E;font-weight:700;'>{tipo_endog.upper()}</span>"
+                        else:
+                            tipo_display = tipo_endog
+                        st.markdown(card_kpi("Tipo endogena", tipo_display), unsafe_allow_html=True)
                 else:
                     st.caption("Sin metadata embebida.")
             st.markdown(divider(), unsafe_allow_html=True)
@@ -1716,7 +1724,7 @@ with tab_dash:
                     </p>
                 </div>
                 <div style="text-align:right;">
-                    <p style="font-size:11px;color:{MUTED};margin:0;">{obtener_bandera_pais(pais)}{pais_codigo_hdr} - {cartera}</p>
+                    <p style="font-size:11px;color:{MUTED};margin:0;">{obtener_bandera_pais(pais)}{pais_codigo_hdr} - {cartera} | {meta_kpis.get('tipo_endogena', '').upper()}</p>
                     <p style="font-size:11px;color:{LTGRAY};margin:2px 0 0;">{len(st.session_state.modelos_data)} modelos cargados</p>
                 </div>
             </div>
