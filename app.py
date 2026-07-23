@@ -1,8 +1,7 @@
 import streamlit as st
 import os
 import json
-import zipfile
-import io
+import base64
 from pathlib import Path
 from notebook_generator import (
     PAIS_MAP, CARTERA_MAP, CARTERA_LABEL,
@@ -223,13 +222,9 @@ if st.button("🚀 Generar Notebooks", use_container_width=True, type="primary")
         nb_gen_name = f"Generacion_Variacion_{pais}_{cartera}.ipynb"
         nb_motor_name = f"Motor_Sarimax_{cartera}_{pais}.ipynb"
         
-        # Crear ZIP en memoria
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-            zf.writestr(nb_gen_name, json.dumps(nb_gen, ensure_ascii=False, indent=1))
-            zf.writestr(nb_motor_name, json.dumps(nb_motor, ensure_ascii=False, indent=1))
-        
-        zip_buffer.seek(0)
+        # Convertir notebooks a JSON (string) para descarga individual
+        nb_gen_json = json.dumps(nb_gen, ensure_ascii=False, indent=1)
+        nb_motor_json = json.dumps(nb_motor, ensure_ascii=False, indent=1)
         
         # Mostrar resumen
         st.success("✅ Notebooks generados correctamente")
@@ -245,17 +240,55 @@ if st.button("🚀 Generar Notebooks", use_container_width=True, type="primary")
         with col4:
             st.metric("Max Lags", max_lags)
         
-        st.markdown("### 📥 Archivos generados")
-        st.code(f"{nb_gen_name}\n{nb_motor_name}")
+        st.markdown("### 📥 Descargar o abrir en Google Colab")
         
-        # Botón de descarga
-        st.download_button(
-            label="📥 Descargar ZIP con ambos notebooks",
-            data=zip_buffer.getvalue(),
-            file_name=f"SARIMAX_{pais}_{cartera}_notebooks.zip",
-            mime="application/zip",
-            use_container_width=True,
-        )
+        # --- NOTEBOOK GENERADOR ---
+        st.markdown("#### 📋 Generador de Variación")
+        
+        col_gen1, col_gen2 = st.columns(2)
+        
+        with col_gen1:
+            st.download_button(
+                label=f"💾 Descargar {nb_gen_name}",
+                data=nb_gen_json,
+                file_name=nb_gen_name,
+                mime="application/json",
+                use_container_width=True,
+            )
+        
+        with col_gen2:
+            # Codificar el notebook en base64 para el link de Colab
+            nb_gen_b64 = base64.b64encode(nb_gen_json.encode("utf-8")).decode("utf-8")
+            colab_url_gen = f"https://colab.research.google.com/notebook#data={nb_gen_b64}"
+            st.link_button(
+                label="🚀 Abrir en Google Colab",
+                url=colab_url_gen,
+                use_container_width=True,
+            )
+        
+        # --- NOTEBOOK MOTOR ---
+        st.markdown("#### ⚙️ Motor SARIMAX")
+        
+        col_mot1, col_mot2 = st.columns(2)
+        
+        with col_mot1:
+            st.download_button(
+                label=f"💾 Descargar {nb_motor_name}",
+                data=nb_motor_json,
+                file_name=nb_motor_name,
+                mime="application/json",
+                use_container_width=True,
+            )
+        
+        with col_mot2:
+            # Codificar el notebook en base64 para el link de Colab
+            nb_motor_b64 = base64.b64encode(nb_motor_json.encode("utf-8")).decode("utf-8")
+            colab_url_motor = f"https://colab.research.google.com/notebook#data={nb_motor_b64}"
+            st.link_button(
+                label="🚀 Abrir en Google Colab",
+                url=colab_url_motor,
+                use_container_width=True,
+            )
         
     except Exception as e:
         st.error(f"❌ Error al generar notebooks:\n{str(e)}")
@@ -269,9 +302,8 @@ st.markdown("""
 **Instrucciones:**
 1. Configura los parámetros arriba
 2. Haz clic en "Generar Notebooks"
-3. Descarga el ZIP
-4. Sube los notebooks a Google Colab
-5. Ejecuta en orden: Generador → Motor → Dashboard
+3. Descarga los notebooks o ábrelos directamente en Google Colab
+4. Ejecuta en orden: Generador → Motor → Dashboard
 
 **Documentación:** Consulta con tu área de riesgo cuantitativo.
 """)
