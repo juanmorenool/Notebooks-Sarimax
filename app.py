@@ -79,6 +79,9 @@ CARTERA_MAP_GEN = {
     'Comercial': 'comercial',
     'Microcredito': 'microcredito',
     'Corporativo': 'corporativo',
+    'Pyme': 'pyme',
+    'Tarjeta': 'tarjeta',
+    'Vehiculo': 'vehiculo',
 }
 
 CARTERA_LABEL_GEN = {
@@ -87,6 +90,9 @@ CARTERA_LABEL_GEN = {
     'comercial': 'Comercial',
     'microcredito': 'Microcredito',
     'corporativo': 'Corporativo',
+    'pyme': 'Pyme',
+    'tarjeta': 'Tarjeta',
+    'vehiculo': 'Vehiculo',
 }
 
 def inject_css():
@@ -1192,11 +1198,25 @@ def render_generador():
         pais = PAIS_MAP_GEN[pais_display]
 
         cartera_display = st.selectbox(
-            "Cartera",
+            "Cartera (selecciona o escribe manualmente abajo)",
             options=list(CARTERA_MAP_GEN.keys()),
             help="Selecciona el portafolio de credito"
         )
-        cartera = CARTERA_MAP_GEN[cartera_display]
+
+        # Campo para escribir manualmente - tiene prioridad sobre el selectbox
+        cartera_manual = st.text_input(
+            "O escribe el nombre de la cartera manualmente",
+            value="",
+            placeholder="Ej: Pyme, Tarjeta, Vehiculo, etc.",
+            help="Si escribes aqui, se usara este valor en lugar del seleccionado arriba"
+        )
+
+        # Determinar cartera final: manual tiene prioridad
+        if cartera_manual.strip():
+            cartera_display = cartera_manual.strip()
+            cartera = cartera_display.lower().replace(" ", "_").replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u").replace("ñ", "n")
+        else:
+            cartera = CARTERA_MAP_GEN[cartera_display]
 
     with col2:
         st.markdown(section_title("Modo Endogena"), unsafe_allow_html=True)
@@ -1357,7 +1377,7 @@ def render_generador():
             )
 
             # Nombres de salida: usamos cartera_display para que refleje lo que el usuario selecciono
-            cartera_slug = cartera_display.lower().replace(" ", "_")
+            cartera_slug = cartera.lower().replace(" ", "_")
             nb_gen_name = f"Generacion_Variacion_{pais}_{cartera_slug}.ipynb"
             nb_motor_name = f"Motor_Sarimax_{cartera_slug}_{pais}.ipynb"
 
