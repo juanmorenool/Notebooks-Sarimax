@@ -2802,7 +2802,7 @@ with tab_dash:
                 st.markdown(
                     f'<div style="display:inline-block;background:#fff4d6;color:{NAVY};'
                     f'border:1px solid #f0d58a;border-radius:6px;padding:6px 10px;'
-                    f'font-size:12px;font-weight:700;margin:0 0 10px;">🎯 MODELO FINAL SELECCIONADO</div>',
+                    f'font-size:12px;font-weight:700;margin:0 0 10px;"> MODELO FINAL SELECCIONADO</div>',
                     unsafe_allow_html=True
                 )
             elif st.session_state.get("modelo_final"):
@@ -2825,7 +2825,7 @@ with tab_dash:
             with hcol3:
                 boton_favorito(st.session_state.modelo_seleccionado, key_suffix="detalle")
             with hcol4:
-                if st.button("🎯 Marcar como modelo final", key="btn_modelo_final_top", use_container_width=True):
+                if st.button(" Marcar como modelo final", key="btn_modelo_final_top", use_container_width=True):
                     with st.spinner("Generando documento metodológico..."):
                         ok = generar_y_guardar_documentos(st.session_state.modelo_seleccionado)
                     if ok:
@@ -3031,7 +3031,7 @@ with tab_dash:
             st.markdown(divider(), unsafe_allow_html=True)
             cfinal1, cfinal2, cfinal3 = st.columns([1.3, 1, 1])
             with cfinal1:
-                if st.button("🎯 Marcar como modelo final", key="btn_modelo_final_bottom", use_container_width=True):
+                if st.button(" Marcar como modelo final", key="btn_modelo_final_bottom", use_container_width=True):
                     with st.spinner("Generando documento metodológico..."):
                         ok = generar_y_guardar_documentos(st.session_state.modelo_seleccionado)
                     if ok:
