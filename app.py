@@ -823,6 +823,8 @@ def recolectar_datos_documento(nombre_modelo, modelos_data, meta_contexto):
         "top_exportar": meta_kpis.get("top_exportar", "N/A"),
         "umbral_sensibilidad": (meta_contexto or {}).get("motor_umbral_sensibilidad", "N/A"),
         "data_exogenas": modelo.get("exogenas"),
+        "data_endogena": modelo.get("fecha_endogena"),
+        "endogenas_cols": modelo.get("endogenas_cols", ["BASE", "ADVERSO", "OPTIMISTA"]),
         "observaciones": modelo.get("observaciones", 0),
         "data_fwl_12m": modelo.get("fwl_12m"),
         "fecha_fin_hist": _obtener_fecha_fin_hist(meta_contexto or {}),
@@ -969,6 +971,59 @@ def graficar_fwl_estatico(doc_data, output_path):
         plt.close("all")
     return output_path
 
+def graficar_historico_estatico(doc_data, output_path):
+    """Genera gráfica de la endógena histórica/proyectada con matplotlib."""
+    df_end = doc_data.get("data_endogena")
+    endogena_cols = doc_data.get("endogenas_cols", ["BASE", "ADVERSO", "OPTIMISTA"])
+    if df_end is None or df_end.empty:
+        return None
+    df = df_end.copy()
+    fecha_col = "fecha" if "fecha" in df.columns else df.columns[0]
+    df[fecha_col] = pd.to_datetime(df[fecha_col], errors="coerce")
+    df = df.dropna(subset=[fecha_col]).sort_values(fecha_col)
+    if df.empty:
+        return None
+
+    plt.close("all")
+    fig, ax = plt.subplots(figsize=(10, 4.5))
+
+    colores = {"BASE": BLUE, "ADVERSO": RED, "OPTIMISTA": GREEN}
+    nombres = {"BASE": "Base", "ADVERSO": "Adverso", "OPTIMISTA": "Optimista"}
+
+    for col in endogena_cols:
+        col_up = str(col).upper()
+        if col_up in ["ADVERSO", "ADVERSA"]:
+            col_up = "ADVERSO"
+        if col in df.columns:
+            serie = pd.to_numeric(df[col], errors="coerce")
+            if serie.notna().any():
+                ax.plot(
+                    df[fecha_col], serie,
+                    label=nombres.get(col_up, col),
+                    color=colores.get(col_up, GRAY),
+                    linewidth=2
+                )
+
+    fecha_fin_hist = doc_data.get("fecha_fin_hist")
+    if fecha_fin_hist is not None and not pd.isna(fecha_fin_hist):
+        ax.axvline(
+            pd.to_datetime(fecha_fin_hist),
+            color=GRAY, linestyle="--", linewidth=1.5, label="Fin histórico"
+        )
+
+    ax.set_title("Evolución Histórica y Proyectada", fontsize=12, fontweight="bold", pad=10)
+    ax.set_xlabel("Fecha", fontsize=9)
+    ax.set_ylabel("Valor", fontsize=9)
+    ax.grid(alpha=0.25)
+    ax.legend(fontsize=8, loc="best")
+    ax.tick_params(axis="both", labelsize=8)
+    plt.tight_layout()
+    try:
+        plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    finally:
+        plt.close("all")
+    return output_path
+
 def texto_ljungbox(score: str, p: float) -> str:
     if score == "A":
         return (
@@ -1090,7 +1145,7 @@ def conclusion_score_global_pdf(s: float) -> str:
 # GENERADOR DE PDF CON REPORTLAB
 # =============================================================================
 
-def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_fwl: str = None) -> bytes:
+def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_fwl: str = None, ruta_imagen_historico: str = None) -> bytes:
     """
     Genera el documento metodológico completo en PDF usando reportlab.
     Consume la estructura exacta devuelta por recolectar_datos_documento().
@@ -1328,6 +1383,28 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
         estilo_cuerpo
     ))
     story.append(Spacer(1, 0.1 * inch))
+
+    # 0.0 Evolución histórica y proyectada de la endógena
+    story.append(Paragraph("Evolución Histórica y Proyectada", estilo_subseccion))
+    if ruta_imagen_historico and os.path.exists(ruta_imagen_historico):
+        try:
+            from PIL import Image as PILImage
+            with PILImage.open(ruta_imagen_historico) as im:
+                img_w_px, img_h_px = im.size
+            aspecto = img_h_px / img_w_px
+            ancho_max = 6.5 * inch
+            alto_max = 4.5 * inch
+            ancho = ancho_max
+            alto = ancho * aspecto
+            if alto > alto_max:
+                alto = alto_max
+                ancho = alto / aspecto
+            story.append(Image(ruta_imagen_historico, width=ancho, height=alto))
+        except Exception:
+            story.append(Image(ruta_imagen_historico, width=6.5 * inch, height=4 * inch))
+    else:
+        story.append(Paragraph("[Gráfica histórica no disponible]", estilo_nota))
+    story.append(Spacer(1, 0.15 * inch))
 
     # 0.1 Factor FWL a 12 meses
     story.append(Paragraph("Factor FWL a 12 Meses", estilo_subseccion))
@@ -1829,6 +1906,7 @@ def generar_y_guardar_documentos(nombre_modelo):
 
     ruta_tmp_exog = None
     ruta_tmp_fwl = None
+    ruta_tmp_hist = None
     try:
         tmp_exog = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
         ruta_tmp_exog = tmp_exog.name
@@ -1848,7 +1926,16 @@ def generar_y_guardar_documentos(nombre_modelo):
         ruta_tmp_fwl = None
 
     try:
-        pdf_bytes = generar_pdf_metodologico(doc_data, ruta_tmp_exog, ruta_tmp_fwl)
+        tmp_hist = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+        ruta_tmp_hist = tmp_hist.name
+        tmp_hist.close()
+        graficar_historico_estatico(doc_data, ruta_tmp_hist)
+    except Exception as e:
+        st.warning(f"Gráfica histórica no generada: {e}")
+        ruta_tmp_hist = None
+
+    try:
+        pdf_bytes = generar_pdf_metodologico(doc_data, ruta_tmp_exog, ruta_tmp_fwl, ruta_tmp_hist)
     except Exception as e:
         st.error(f"Error generando PDF: {e}")
         st.exception(e)
@@ -1872,6 +1959,8 @@ def generar_y_guardar_documentos(nombre_modelo):
         os.remove(ruta_tmp_exog)
     if ruta_tmp_fwl and os.path.exists(ruta_tmp_fwl):
         os.remove(ruta_tmp_fwl)
+    if ruta_tmp_hist and os.path.exists(ruta_tmp_hist):
+        os.remove(ruta_tmp_hist)
 
     nombre_archivo = _normalizar_nombre_archivo(nombre_modelo)
     st.session_state.modelo_final = nombre_modelo
