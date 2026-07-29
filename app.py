@@ -757,49 +757,29 @@ def recolectar_datos_documento(nombre_modelo, modelos_data, meta_contexto):
     pruebas = modelo.get("pruebas")
     coeficientes = modelo.get("coeficientes")
     exogenas = modelo.get("exogenas_nombres", [])
-    scores_base = obtener_scores_modelo(pruebas)
+    scores = obtener_scores_modelo(pruebas)
     score_global_num, detalle_global = calcular_score_global(pruebas)
     score_global_txt, score_global_conclusion = clasificar_score_global(score_global_num)
     significancia = obtener_significancia_exogenas(coeficientes, exogenas)
     ar_count, ma_count = contar_ar_ma(coeficientes)
     meta_kpis = extraer_kpis_meta(meta_contexto)
 
-    scores = {
-        "ljung_box": {"score": "N/A", "p_valor": None, "estadistico": None},
-        "jarque_bera": {"score": "N/A", "p_valor": None, "estadistico": None},
-        "heterocedasticidad": {"score": "N/A", "p_valor": None, "estadistico": None},
-    }
-    for clave, valor in scores_base.items():
-        letra = valor[0] if isinstance(valor, tuple) and len(valor) > 0 else valor
-        if clave in scores and letra is not None:
-            scores[clave]["score"] = letra
-
     diag_rows = []
     if pruebas is not None and not pruebas.empty:
         for _, row in pruebas.iterrows():
             prueba = limpiar_nombre_prueba(row.get("Prueba", ""))
             p_val = row.get("P_value", None)
-            estadistico = row.get("Estadistico")
             score, _ = calcular_score(p_val, prueba)
             prueba_lower = str(prueba).lower()
             if "ljung" in prueba_lower or "box" in prueba_lower:
                 interpretacion = texto_ljungbox(score, p_val)
-                score_key = "ljung_box"
             elif "jarque" in prueba_lower or "bera" in prueba_lower:
                 interpretacion = texto_jarquebera(score, p_val)
-                score_key = "jarque_bera"
             else:
                 interpretacion = texto_hetero(score, p_val)
-                score_key = "heterocedasticidad"
-
-            scores[score_key] = {
-                "score": score,
-                "p_valor": p_val,
-                "estadistico": estadistico,
-            }
             diag_rows.append({
                 "prueba": prueba,
-                "estadistico": estadistico,
+                "estadistico": row.get("Estadistico"),
                 "p_value": p_val,
                 "score": score,
                 "interpretacion": interpretacion,
@@ -842,6 +822,7 @@ def recolectar_datos_documento(nombre_modelo, modelos_data, meta_contexto):
         "top_exportar": meta_kpis.get("top_exportar", "N/A"),
         "umbral_sensibilidad": (meta_contexto or {}).get("motor_umbral_sensibilidad", "N/A"),
         "data_exogenas": modelo.get("exogenas"),
+        "observaciones": modelo.get("observaciones", 0),
         "fecha_fin_hist": _obtener_fecha_fin_hist(meta_contexto or {}),
     }
 
@@ -1065,23 +1046,10 @@ def texto_hetero(score: str, p: float) -> str:
             "modelos de varianza condicional (ARCH/GARCH)."
         )
 
-def clasificar_score_global(s: float) -> tuple:
-    """Retorna (clasificación, conclusión)"""
-    if s is None:
-        return (
-            "N/A",
-            "No hay información suficiente para calcular la clasificación global del modelo."
-        )
-    try:
-        s = float(s)
-    except (TypeError, ValueError):
-        return (
-            "N/A",
-            "No hay información suficiente para calcular la clasificación global del modelo."
-        )
+def conclusion_score_global_pdf(s: float) -> str:
+    """Retorna solo la conclusión larga para el PDF."""
     if s >= 7:
         return (
-            "Bueno",
             "El modelo presenta un desempeño general satisfactorio. Los diagnósticos "
             "estadísticos indican que la especificación captura adecuadamente la dinámica "
             "de la cartera y las proyecciones son confiables para la estimación de provisiones "
@@ -1089,7 +1057,6 @@ def clasificar_score_global(s: float) -> tuple:
         )
     elif s >= 5:
         return (
-            "Regular",
             "El modelo presenta un desempeño aceptable con áreas de mejora identificadas. "
             "Aunque las proyecciones son utilizables, se recomienda monitorear los diagnósticos "
             "marcados con score C o D en corridas posteriores y evaluar reespecificaciones "
@@ -1097,7 +1064,6 @@ def clasificar_score_global(s: float) -> tuple:
         )
     else:
         return (
-            "Deficiente",
             "El modelo presenta problemas estadísticos significativos que comprometen la "
             "confiabilidad de las proyecciones. Se recomienda NO utilizar este modelo como "
             "salida oficial sin una reespecificación profunda que aborde los diagnósticos "
@@ -1112,26 +1078,16 @@ def clasificar_score_global(s: float) -> tuple:
 def generar_pdf_metodologico(doc_data: dict, ruta_imagen: str) -> bytes:
     """
     Genera el documento metodológico completo en PDF usando reportlab.
-
-    Parámetros
-    ----------
-    doc_data : dict
-        Diccionario con toda la información del modelo (metadata, scores, exógenas, etc.)
-    ruta_imagen : str
-        Ruta al archivo PNG de la gráfica de variables exógenas.
-
-    Retorna
-    -------
-    bytes
-        Contenido binario del PDF listo para descarga.
+    Consume la estructura exacta devuelta por recolectar_datos_documento().
     """
     import io
+    import os
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import letter
     from reportlab.lib.units import inch
     from reportlab.platypus import (
         SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-        Image, PageBreak, KeepTogether
+        Image, PageBreak
     )
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
@@ -1147,9 +1103,6 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen: str) -> bytes:
         bottomMargin=72
     )
 
-    # -------------------------------------------------------------------------
-    # ESTILOS PERSONALIZADOS
-    # -------------------------------------------------------------------------
     styles = getSampleStyleSheet()
 
     # Paleta corporativa
@@ -1191,9 +1144,6 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen: str) -> bytes:
         spaceBefore=20,
         spaceAfter=12,
         fontName="Helvetica-Bold",
-        borderWidth=0,
-        borderColor=VERDE_CORP,
-        borderPadding=5,
         leftIndent=0
     )
 
@@ -1238,7 +1188,6 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen: str) -> bytes:
     def estilo_por_score(score: str):
         return {"A": estilo_score_a, "B": estilo_score_b, "C": estilo_score_c, "D": estilo_score_d}.get(score, estilo_cuerpo)
 
-    # Helper para tablas
     def tabla_estilo_base():
         return TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), VERDE_CORP),
@@ -1258,11 +1207,61 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen: str) -> bytes:
         ])
 
     story = []
-    meta = doc_data.get("metadata", {})
-    scores = doc_data.get("scores", {})
-    score_global = doc_data.get("score_global", 0)
-    clasificacion, conclusion_global = clasificar_score_global(score_global)
-    fecha_gen = datetime.now().strftime("%d/%m/%Y %H:%M")
+
+    # ------------------------------------------------------------------
+    # Extraer datos de doc_data (estructura real de recolectar_datos_documento)
+    # ------------------------------------------------------------------
+    nombre_modelo = doc_data.get("nombre_modelo", "N/A")
+    meta_kpis = doc_data.get("meta_kpis", {})
+    meta_ctx = doc_data.get("meta_contexto", {})
+    score_global = doc_data.get("score_global_num")
+    if score_global is None:
+        score_global = 0.0
+    clasificacion = doc_data.get("score_global_clase", "N/A")
+    conclusion_global = doc_data.get("score_global_conclusion", "")
+    if not conclusion_global:
+        conclusion_global = conclusion_score_global_pdf(score_global)
+    diagnosticos = doc_data.get("diagnosticos", [])
+    coeficientes = doc_data.get("coeficientes", [])
+    exogenas_list = doc_data.get("exogenas", [])
+    ar_count = doc_data.get("ar_count", 0)
+    ma_count = doc_data.get("ma_count", 0)
+    observaciones = doc_data.get("observaciones", 0)
+    fecha_gen = doc_data.get("fecha_generacion", datetime.now().strftime("%d/%m/%Y %H:%M"))
+
+    # Construir metadata unificada para el PDF
+    meta = {
+        "pais": meta_kpis.get("pais", "N/A"),
+        "cartera": meta_kpis.get("cartera", "N/A"),
+        "tipo_endogena": meta_kpis.get("tipo_endogena", "N/A"),
+        "modo_endogena": meta_kpis.get("modo_endogena", "N/A"),
+        "ventana_mm": meta_kpis.get("ventana_mm", "N/A"),
+        "vif_max": meta_kpis.get("vif_max", "N/A"),
+        "max_exog": meta_kpis.get("max_exog", "N/A"),
+        "top_exportar": meta_kpis.get("top_exportar", "N/A"),
+        "fwl_min": meta_kpis.get("fwl_min", "N/A"),
+        "fwl_max": meta_kpis.get("fwl_max", "N/A"),
+        "valores_p": meta_ctx.get("motor_valores_p", "N/A"),
+        "valores_q": meta_ctx.get("motor_valores_q", "N/A"),
+        "max_lags": meta_ctx.get("motor_max_lags", "N/A"),
+        "umbral_sensibilidad": doc_data.get("umbral_sensibilidad", meta_ctx.get("motor_umbral_sensibilidad", "N/A")),
+        "trend_modelo": meta_ctx.get("motor_trend", "N/A"),
+    }
+
+    # Buscar diagnósticos por nombre
+    diag_map = {}
+    for d in diagnosticos:
+        nombre_prueba = str(d.get("prueba", "")).lower()
+        if "ljung" in nombre_prueba or "box" in nombre_prueba:
+            diag_map["ljung_box"] = d
+        elif "jarque" in nombre_prueba or "bera" in nombre_prueba:
+            diag_map["jarque_bera"] = d
+        elif "hetero" in nombre_prueba or "arch" in nombre_prueba:
+            diag_map["heterocedasticidad"] = d
+
+    lb = diag_map.get("ljung_box", {})
+    jb = diag_map.get("jarque_bera", {})
+    ht = diag_map.get("heterocedasticidad", {})
 
     # =====================================================================
     # PORTADA
@@ -1273,7 +1272,7 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen: str) -> bytes:
     story.append(Spacer(1, 0.3 * inch))
 
     datos_portada = [
-        ["Modelo seleccionado:", doc_data.get("nombre", "N/A")],
+        ["Modelo seleccionado:", nombre_modelo],
         ["Fecha de generación:", fecha_gen],
         ["País:", meta.get("pais", "N/A")],
         ["Cartera:", meta.get("cartera", "N/A")],
@@ -1309,7 +1308,6 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen: str) -> bytes:
     # =====================================================================
     story.append(Paragraph("2. Configuración del Motor", estilo_seccion))
 
-    # Tabla de configuración
     cfg_data = [
         ["Parámetro", "Valor"],
         ["País", meta.get("pais", "N/A")],
@@ -1350,7 +1348,7 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen: str) -> bytes:
 
     story.append(Paragraph("2.2 Tipo de endógena: Logit vs Total", estilo_subseccion))
     tipo_endog = meta.get("tipo_endogena", "N/A")
-    if tipo_endog.lower() == "logit":
+    if str(tipo_endog).lower() == "logit":
         texto_tipo = (
             "Logit: La variable endógena se transforma mediante la función logit antes de la estimación. "
             "Esto es útil cuando la variable está acotada entre 0 y 1 (o 0% y 100%), ya que evita que el modelo "
@@ -1412,34 +1410,31 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen: str) -> bytes:
     # =====================================================================
     story.append(Paragraph("3. Variables Utilizadas", estilo_seccion))
 
-    exogenas = doc_data.get("exogenas", [])
-    if exogenas:
-        exo_data = [["Variable exógena", "Coeficiente", "p-value", "Significancia"]]
-        for row in exogenas:
-            if isinstance(row, dict):
-                nombre = row.get("exogena")
-                coef = row.get("coeficiente")
-                pval = row.get("p_value")
-                estado = str(row.get("estado", "")).lower()
-                sig = estado in ("significativa", "marginal")
-            elif isinstance(row, (list, tuple)):
-                if len(row) >= 4:
-                    nombre, coef, pval, sig = row[:4]
-                elif len(row) == 3:
-                    nombre, pval, estado = row
-                    coef = "N/A"
-                    sig = str(estado).lower() in ("significativa", "marginal")
-                else:
-                    continue
-            else:
-                continue
+    # Construir diccionario de coeficientes por nombre de variable
+    coefs_por_nombre = {}
+    for row in coeficientes:
+        var_name = str(row.get("variable", "")).strip()
+        coefs_por_nombre[var_name] = row
 
+    exo_data = [["Variable exógena", "Coeficiente", "p-value", "Significancia"]]
+    exo_count = 0
+    for row in coeficientes:
+        if row.get("tipo") == "Exogena":
+            exo_count += 1
+            pval = row.get("p_value")
+            try:
+                sig = "Sí" if pval is not None and float(pval) < 0.05 else "No"
+            except:
+                sig = "No"
+            coef_val = row.get("coeficiente")
             exo_data.append([
-                str(nombre),
-                f"{coef:.6f}" if isinstance(coef, (int, float)) else str(coef if coef is not None else "N/A"),
-                f"{pval:.4f}" if isinstance(pval, (int, float)) else str(pval if pval is not None else "N/A"),
-                "Sí" if sig else "No"
+                str(row.get("variable", "N/A")),
+                f"{float(coef_val):.6f}" if coef_val is not None else "N/A",
+                f"{float(pval):.4f}" if pval is not None else "N/A",
+                sig
             ])
+
+    if exo_count > 0:
         tabla_exo = Table(exo_data, colWidths=[2.4 * inch, 1.3 * inch, 1.1 * inch, 1.1 * inch])
         tabla_exo.setStyle(tabla_estilo_base())
         story.append(tabla_exo)
@@ -1448,13 +1443,10 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen: str) -> bytes:
 
     story.append(Spacer(1, 0.15 * inch))
     story.append(Paragraph("Especificación ARMA", estilo_subseccion))
-    ar_count = doc_data.get("ar_count", 0)
-    ma_count = doc_data.get("ma_count", 0)
-    obs = doc_data.get("observaciones", "N/A")
     story.append(Paragraph(
         f"Términos autorregresivos (AR): {ar_count}. "
         f"Términos de media móvil (MA): {ma_count}. "
-        f"Observaciones utilizadas en la estimación: {obs}.",
+        f"Observaciones utilizadas en la estimación: {observaciones}.",
         estilo_cuerpo
     ))
     story.append(PageBreak())
@@ -1491,34 +1483,40 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen: str) -> bytes:
     ))
     story.append(Spacer(1, 0.1 * inch))
 
+    def fmt_num(v):
+        try:
+            return f"{float(v):.4f}"
+        except:
+            return str(v)
+
     # Ljung-Box
-    lb = scores.get("ljung_box", {})
     lb_score = lb.get("score", "N/A")
-    lb_p = lb.get("p_valor", 0)
+    lb_p = lb.get("p_value", 0)
     lb_stat = lb.get("estadistico", 0)
+    lb_interp = lb.get("interpretacion", texto_ljungbox(lb_score, lb_p if lb_p is not None else 0))
     story.append(Paragraph(f"5.1 Ljung-Box — Autocorrelación de residuos (Score: {lb_score})", estilo_subseccion))
-    story.append(Paragraph(f"Estadístico: {lb_stat:.4f}  |  p-valor: {lb_p:.4f}", estilo_nota))
-    story.append(Paragraph(texto_ljungbox(lb_score, lb_p), estilo_por_score(lb_score)))
+    story.append(Paragraph(f"Estadístico: {fmt_num(lb_stat)}  |  p-valor: {fmt_num(lb_p)}", estilo_nota))
+    story.append(Paragraph(lb_interp, estilo_por_score(lb_score)))
     story.append(Spacer(1, 0.1 * inch))
 
     # Jarque-Bera
-    jb = scores.get("jarque_bera", {})
     jb_score = jb.get("score", "N/A")
-    jb_p = jb.get("p_valor", 0)
+    jb_p = jb.get("p_value", 0)
     jb_stat = jb.get("estadistico", 0)
+    jb_interp = jb.get("interpretacion", texto_jarquebera(jb_score, jb_p if jb_p is not None else 0))
     story.append(Paragraph(f"5.2 Jarque-Bera — Normalidad de residuos (Score: {jb_score})", estilo_subseccion))
-    story.append(Paragraph(f"Estadístico: {jb_stat:.4f}  |  p-valor: {jb_p:.4f}", estilo_nota))
-    story.append(Paragraph(texto_jarquebera(jb_score, jb_p), estilo_por_score(jb_score)))
+    story.append(Paragraph(f"Estadístico: {fmt_num(jb_stat)}  |  p-valor: {fmt_num(jb_p)}", estilo_nota))
+    story.append(Paragraph(jb_interp, estilo_por_score(jb_score)))
     story.append(Spacer(1, 0.1 * inch))
 
     # Heterocedasticidad
-    ht = scores.get("heterocedasticidad", {})
     ht_score = ht.get("score", "N/A")
-    ht_p = ht.get("p_valor", 0)
+    ht_p = ht.get("p_value", 0)
     ht_stat = ht.get("estadistico", 0)
+    ht_interp = ht.get("interpretacion", texto_hetero(ht_score, ht_p if ht_p is not None else 0))
     story.append(Paragraph(f"5.3 Heterocedasticidad — ARCH/LM (Score: {ht_score})", estilo_subseccion))
-    story.append(Paragraph(f"Estadístico: {ht_stat:.4f}  |  p-valor: {ht_p:.4f}", estilo_nota))
-    story.append(Paragraph(texto_hetero(ht_score, ht_p), estilo_por_score(ht_score)))
+    story.append(Paragraph(f"Estadístico: {fmt_num(ht_stat)}  |  p-valor: {fmt_num(ht_p)}", estilo_nota))
+    story.append(Paragraph(ht_interp, estilo_por_score(ht_score)))
     story.append(PageBreak())
 
     # =====================================================================
@@ -1526,12 +1524,11 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen: str) -> bytes:
     # =====================================================================
     story.append(Paragraph("6. Score Global y Conclusión", estilo_seccion))
 
-    # Tabla resumen de scores
     resumen_data = [
         ["Prueba", "Score", "p-valor", "Estadístico"],
-        ["Ljung-Box", lb_score, f"{lb_p:.4f}", f"{lb_stat:.4f}"],
-        ["Jarque-Bera", jb_score, f"{jb_p:.4f}", f"{jb_stat:.4f}"],
-        ["Heterocedasticidad", ht_score, f"{ht_p:.4f}", f"{ht_stat:.4f}"],
+        ["Ljung-Box", lb_score, fmt_num(lb_p), fmt_num(lb_stat)],
+        ["Jarque-Bera", jb_score, fmt_num(jb_p), fmt_num(jb_stat)],
+        ["Heterocedasticidad", ht_score, fmt_num(ht_p), fmt_num(ht_stat)],
         ["Score Global Ponderado", "", "", f"{score_global:.2f} / 10"],
     ]
     tabla_resumen = Table(resumen_data, colWidths=[2.2 * inch, 1.0 * inch, 1.2 * inch, 1.3 * inch])
@@ -1539,10 +1536,11 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen: str) -> bytes:
     story.append(tabla_resumen)
     story.append(Spacer(1, 0.2 * inch))
 
-    # Clasificación con color
-    if clasificacion == "Bueno":
+    # Normalizar clasificación para color
+    clas_norm = str(clasificacion).upper()
+    if clas_norm == "BUENO":
         color_clas = VERDE_CORP
-    elif clasificacion == "Regular":
+    elif clas_norm == "REGULAR":
         color_clas = NARANJA_CORP
     else:
         color_clas = ROJO_CORP
@@ -1561,7 +1559,6 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen: str) -> bytes:
     story.append(Paragraph("Conclusión", estilo_subseccion))
     story.append(Paragraph(conclusion_global, estilo_cuerpo))
 
-    # Nota final
     story.append(Spacer(1, 0.3 * inch))
     story.append(Paragraph(
         "Este documento fue generado automáticamente por el dashboard SARIMAX IFRS 9. "
@@ -1569,7 +1566,6 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen: str) -> bytes:
         estilo_nota
     ))
 
-    # Construir PDF
     doc.build(story)
     pdf_bytes = buffer.getvalue()
     buffer.close()
