@@ -12,6 +12,8 @@ from pathlib import Path
 from datetime import datetime
 from io import BytesIO
 import tempfile
+import matplotlib
+matplotlib.use("Agg")  # Backend sin interfaz grafica - obligatorio en servidores (Streamlit Cloud)
 import matplotlib.pyplot as plt
 from fpdf import FPDF
 from openpyxl.drawing.image import Image as XLImage
@@ -839,6 +841,7 @@ def graficar_macros_estatico(doc_data, output_path):
         ("_ADVERSO", "Adverso", "#b22222"),
         ("_OPTIMISTA", "Optimista", "#e08a00"),
     ]
+    plt.close("all")
     plt.figure(figsize=(10, 5))
     dibujado = 0
     for sufijo, etiqueta, color in escenarios:
@@ -861,12 +864,37 @@ def graficar_macros_estatico(doc_data, output_path):
     if dibujado > 0:
         plt.legend()
     plt.tight_layout()
-    plt.savefig(output_path, dpi=150)
-    plt.close()
+    try:
+        plt.savefig(output_path, dpi=150)
+    finally:
+        plt.close("all")
     return output_path
 
-def _pdf_texto(pdf, txt, h=6):
+def _pdf_texto(pdf, txt, h=6, max_chars_palabra=40):
+    """
+    Escribe texto en el PDF evitando el bloqueo infinito de FPDF/fpdf2
+    cuando un token sin espacios (nombre de variable, numero largo, URL, etc.)
+    es mas ancho que la celda disponible. Sin esta proteccion, multi_cell
+    puede quedarse en un loop infinito intentando ajustar el texto, lo que
+    hace que la app de Streamlit se "cuelgue" y termine desconectandose.
+    """
     seguro = str(txt).encode("latin-1", "ignore").decode("latin-1")
+
+    # Inserta espacios dentro de cualquier token demasiado largo para que
+    # multi_cell siempre pueda encontrar un punto de corte, sin importar
+    # si la version de fpdf instalada soporta wrapmode="CHAR" o no.
+    palabras_seguras = []
+    for palabra in seguro.split(" "):
+        if len(palabra) > max_chars_palabra:
+            trozos = [palabra[i:i + max_chars_palabra] for i in range(0, len(palabra), max_chars_palabra)]
+            palabras_seguras.append(" ".join(trozos))
+        else:
+            palabras_seguras.append(palabra)
+    seguro = " ".join(palabras_seguras)
+
+    if not seguro.strip():
+        seguro = " "
+
     try:
         pdf.multi_cell(0, h, seguro, wrapmode="CHAR")
     except TypeError:
@@ -936,8 +964,12 @@ def generar_pdf_metodologico(doc_data, ruta_imagen):
     pdf.set_font("Helvetica", "B", 13)
     _pdf_texto(pdf, "Grafica de Macros (Exogenas)")
     if ruta_imagen and os.path.exists(ruta_imagen):
-        pdf.image(ruta_imagen, x=10, y=30, w=185)
-        pdf.ln(105)
+        try:
+            pdf.image(ruta_imagen, x=10, y=30, w=185)
+            pdf.ln(105)
+        except Exception:
+            pdf.set_font("Helvetica", "", 10)
+            _pdf_texto(pdf, "No fue posible insertar la grafica de macros en el PDF.")
     else:
         pdf.set_font("Helvetica", "", 10)
         _pdf_texto(pdf, "No fue posible generar la grafica de macros.")
@@ -1050,27 +1082,59 @@ def dialogo_confirmacion_modelo_final():
     c1, c2 = st.columns(2)
     if c1.button("Confirmar", use_container_width=True):
         ruta_tmp = None
+        doc_data = None
         try:
-            with st.spinner("Generando documento metodológico..."):
+            with st.spinner("Recolectando datos del modelo..."):
                 doc_data = recolectar_datos_documento(nombre, st.session_state.modelos_data, st.session_state.meta_contexto)
+        except Exception as e:
+            st.error(f"No fue posible preparar los datos del modelo: {e}")
+            st.exception(e)
+            return
+
+        try:
+            with st.spinner("Generando grafica de macros..."):
                 tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
                 ruta_tmp = tmp.name
                 tmp.close()
                 graficar_macros_estatico(doc_data, ruta_tmp)
+        except Exception as e:
+            st.warning(f"No fue posible generar la grafica de macros, se continuara sin ella: {e}")
+            ruta_tmp = None
+
+        try:
+            with st.spinner("Generando documento PDF..."):
                 pdf_bytes = generar_pdf_metodologico(doc_data, ruta_tmp)
+        except Exception as e:
+            st.error(f"No fue posible generar el PDF: {e}")
+            st.exception(e)
+            if ruta_tmp and os.path.exists(ruta_tmp):
+                os.remove(ruta_tmp)
+            return
+
+        try:
+            with st.spinner("Generando documento Excel..."):
                 excel_bytes = generar_excel_metodologico(doc_data, ruta_tmp)
-                nombre_archivo = _normalizar_nombre_archivo(nombre)
-                st.session_state.modelo_final = nombre
-                st.session_state.documento_metodologico_pdf = pdf_bytes
-                st.session_state.documento_metodologico_excel = excel_bytes
-                st.session_state.documento_metodologico_pdf_nombre = f"Documento_Metodologico_{nombre_archivo}.pdf"
-                st.session_state.documento_metodologico_excel_nombre = f"Documento_Metodologico_{nombre_archivo}.xlsx"
-                st.session_state.documento_metodologico_data = doc_data
+        except Exception as e:
+            st.error(f"No fue posible generar el Excel: {e}")
+            st.exception(e)
+            if ruta_tmp and os.path.exists(ruta_tmp):
+                os.remove(ruta_tmp)
+            return
+
+        try:
+            nombre_archivo = _normalizar_nombre_archivo(nombre)
+            st.session_state.modelo_final = nombre
+            st.session_state.documento_metodologico_pdf = pdf_bytes
+            st.session_state.documento_metodologico_excel = excel_bytes
+            st.session_state.documento_metodologico_pdf_nombre = f"Documento_Metodologico_{nombre_archivo}.pdf"
+            st.session_state.documento_metodologico_excel_nombre = f"Documento_Metodologico_{nombre_archivo}.xlsx"
+            st.session_state.documento_metodologico_data = doc_data
             st.session_state.mostrar_confirmacion_final = False
             st.session_state.modelo_candidato_final = None
             st.rerun()
         except Exception as e:
-            st.error(f"No fue posible generar el documento metodológico: {e}")
+            st.error(f"No fue posible guardar el documento metodológico: {e}")
+            st.exception(e)
         finally:
             if ruta_tmp and os.path.exists(ruta_tmp):
                 os.remove(ruta_tmp)
@@ -1268,6 +1332,10 @@ def render_metricas_diagnostico(pruebas_df):
         return
     scores = obtener_scores_modelo(pruebas_df)
     score_global, _ = calcular_score_global(pruebas_df)
+    # NOTA: estilo_score_global() devuelve 3 valores (etiqueta, color, fondo),
+    # a diferencia de clasificar_score_global() que devuelve solo 2
+    # (etiqueta, conclusion). Usar la funcion correcta evita el
+    # "ValueError: not enough values to unpack".
     etiqueta_g, color_g, _ = estilo_score_global(score_global)
     c0, c1, c2, c3 = st.columns(4)
     with c0:
@@ -1527,7 +1595,7 @@ def render_vista_favoritos():
         fila_cols = st.columns(n_cols)
         for j, (nombre, score_global) in enumerate(filas[i:i + n_cols]):
             with fila_cols[j]:
-                etiqueta_g, color_g, bg_g = clasificar_score_global(score_global)
+                etiqueta_g, color_g, bg_g = estilo_score_global(score_global)
                 datos = modelos_data.get(nombre, {})
                 coefs = datos.get('coeficientes')
                 ar_count, ma_count = contar_ar_ma(coefs) if coefs is not None else (0, 0)
