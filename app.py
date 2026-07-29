@@ -838,7 +838,6 @@ def graficar_macros_estatico(doc_data, output_path):
     if df.empty:
         return None
 
-    # Detectar variables exógenas base (sin sufijo _BASE/_ADVERSO/_OPTIMISTA)
     escenarios = ["_BASE", "_ADVERSO", "_OPTIMISTA"]
     colores_esc = {"_BASE": "#2a7f3f", "_ADVERSO": "#b22222", "_OPTIMISTA": "#e08a00"}
     nombres_esc = {"_BASE": "Base", "_ADVERSO": "Adverso", "_OPTIMISTA": "Optimista"}
@@ -860,11 +859,10 @@ def graficar_macros_estatico(doc_data, output_path):
         return None
 
     n_vars = len(vars_base)
-    n_cols = min(2, n_vars)
-    n_rows = (n_vars + n_cols - 1) // n_cols
-
+    # Una sola columna, cada exógena en su propio panel, apiladas verticalmente
+    fig_height = 3.5 * n_vars + 1  # ~3.5 pulgadas por variable + margen
     plt.close("all")
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(6 * n_cols, 3.5 * n_rows), squeeze=False)
+    fig, axes = plt.subplots(n_vars, 1, figsize=(10, fig_height), squeeze=False)
     axes = axes.flatten()
 
     fecha_fin_hist = doc_data.get("fecha_fin_hist")
@@ -881,21 +879,17 @@ def graficar_macros_estatico(doc_data, output_path):
             if col_match is not None:
                 serie = pd.to_numeric(df[col_match], errors="coerce")
                 if serie.notna().any():
-                    ax.plot(df[fecha_col], serie, label=nombres_esc[suf], color=colores_esc[suf], linewidth=1.5)
+                    ax.plot(df[fecha_col], serie, label=nombres_esc[suf], color=colores_esc[suf], linewidth=1.8)
 
         if fecha_fin_hist is not None and not pd.isna(fecha_fin_hist):
-            ax.axvline(pd.to_datetime(fecha_fin_hist), color="#555555", linestyle="--", linewidth=1, label="Fin histórico")
+            ax.axvline(pd.to_datetime(fecha_fin_hist), color="#555555", linestyle="--", linewidth=1.2, label="Fin histórico")
 
-        ax.set_title(var_base, fontsize=10, fontweight="bold")
+        ax.set_title(var_base, fontsize=11, fontweight="bold", pad=8)
         ax.set_xlabel("Fecha", fontsize=8)
         ax.set_ylabel("Valor", fontsize=8)
         ax.grid(alpha=0.25)
-        ax.legend(fontsize=7, loc="best")
+        ax.legend(fontsize=8, loc="best")
         ax.tick_params(axis="both", labelsize=7)
-
-    # Ocultar ejes sobrantes
-    for idx in range(n_vars, len(axes)):
-        axes[idx].set_visible(False)
 
     plt.tight_layout()
     try:
@@ -903,7 +897,6 @@ def graficar_macros_estatico(doc_data, output_path):
     finally:
         plt.close("all")
     return output_path
-
 
 def graficar_fwl_estatico(doc_data, output_path):
     """Genera gráfica del Factor FWL a 12 meses con matplotlib."""
@@ -2965,7 +2958,7 @@ with tab_dash:
                 st.markdown(
                     f'<div style="display:inline-block;background:#fff4d6;color:{NAVY};'
                     f'border:1px solid #f0d58a;border-radius:6px;padding:6px 10px;'
-                    f'font-size:12px;font-weight:700;margin:0 0 10px;"> MODELO FINAL SELECCIONADO</div>',
+                    f'font-size:12px;font-weight:700;margin:0 0 10px;">🎯 MODELO FINAL SELECCIONADO</div>',
                     unsafe_allow_html=True
                 )
             elif st.session_state.get("modelo_final"):
@@ -2988,7 +2981,7 @@ with tab_dash:
             with hcol3:
                 boton_favorito(st.session_state.modelo_seleccionado, key_suffix="detalle")
             with hcol4:
-                if st.button(" Marcar como modelo final", key="btn_modelo_final_top", use_container_width=True):
+                if st.button("🎯 Marcar como modelo final", key="btn_modelo_final_top", use_container_width=True):
                     with st.spinner("Generando documento metodológico..."):
                         ok = generar_y_guardar_documentos(st.session_state.modelo_seleccionado)
                     if ok:
@@ -3194,7 +3187,7 @@ with tab_dash:
             st.markdown(divider(), unsafe_allow_html=True)
             cfinal1, cfinal2, cfinal3 = st.columns([1.3, 1, 1])
             with cfinal1:
-                if st.button(" Marcar como modelo final", key="btn_modelo_final_bottom", use_container_width=True):
+                if st.button("🎯 Marcar como modelo final", key="btn_modelo_final_bottom", use_container_width=True):
                     with st.spinner("Generando documento metodológico..."):
                         ok = generar_y_guardar_documentos(st.session_state.modelo_seleccionado)
                     if ok:
