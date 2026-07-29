@@ -155,19 +155,24 @@ def generar_notebook_generador(
             source = reemplazar_en_celda(source, reemplazos_celda4)
             nb['cells'][i]['source'] = _ensure_source_list(source)
     
-    # Reemplaza en celda 7 (carga de exógenas)
+    # Reemplaza en celda de carga de exógenas (sin depender de índice fijo)
     for i, cell in enumerate(nb['cells']):
-        if i == 7 and cell['cell_type'] == 'code':
-            source = ''.join(cell['source']) if isinstance(cell['source'], list) else cell['source']
-            lines = source.split('\n')
-            new_lines = []
-            for line in lines:
-                if 'Variables Macro FWL' in line and 'read_excel' in line:
-                    new_lines.append(f'exo = pd.read_excel(\'Variables Macro FWL {pais}.xlsx\')')
-                else:
-                    new_lines.append(line)
+        if cell['cell_type'] != 'code':
+            continue
+        source = ''.join(cell['source']) if isinstance(cell['source'], list) else cell['source']
+        lines = source.split('\n')
+        new_lines = []
+        line_changed = False
+        for line in lines:
+            if 'Variables Macro FWL' in line and 'read_excel' in line:
+                new_lines.append(f'exo = pd.read_excel(\'Variables Macro FWL {pais}.xlsx\')')
+                line_changed = True
+            else:
+                new_lines.append(line)
+        if line_changed:
             source = '\n'.join(new_lines)
             nb['cells'][i]['source'] = _ensure_source_list(source)
+            break
     
     return nb
 
