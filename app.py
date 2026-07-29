@@ -838,8 +838,10 @@ def graficar_macros_estatico(doc_data, output_path):
     if df.empty:
         return None
 
+    # Detectar variables exógenas base (sin sufijo _BASE/_ADVERSO/_OPTIMISTA)
     escenarios = ["_BASE", "_ADVERSO", "_OPTIMISTA"]
-    colores_esc = {"_BASE": "#2a7f3f", "_ADVERSO": "#b22222", "_OPTIMISTA": "#e08a00"}
+    # Paleta corporativa del app (misma que Base/Adverso/Optimista en Plotly)
+    colores_esc = {"_BASE": BLUE, "_ADVERSO": RED, "_OPTIMISTA": GREEN}
     nombres_esc = {"_BASE": "Base", "_ADVERSO": "Adverso", "_OPTIMISTA": "Optimista"}
 
     # Identificar variables base únicas
@@ -859,10 +861,13 @@ def graficar_macros_estatico(doc_data, output_path):
         return None
 
     n_vars = len(vars_base)
-    # Una sola columna, cada exógena en su propio panel, apiladas verticalmente
-    fig_height = 3.5 * n_vars + 1  # ~3.5 pulgadas por variable + margen
+
+    # Una variable por fila (apiladas verticalmente) para que se vean bien en el PDF
+    n_cols = 1
+    n_rows = n_vars
+
     plt.close("all")
-    fig, axes = plt.subplots(n_vars, 1, figsize=(10, fig_height), squeeze=False)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(10, 3.3 * n_rows), squeeze=False)
     axes = axes.flatten()
 
     fecha_fin_hist = doc_data.get("fecha_fin_hist")
@@ -879,24 +884,41 @@ def graficar_macros_estatico(doc_data, output_path):
             if col_match is not None:
                 serie = pd.to_numeric(df[col_match], errors="coerce")
                 if serie.notna().any():
-                    ax.plot(df[fecha_col], serie, label=nombres_esc[suf], color=colores_esc[suf], linewidth=1.8)
+                    ax.plot(
+                        df[fecha_col], serie,
+                        label=nombres_esc[suf],
+                        color=colores_esc[suf],
+                        linewidth=1.8
+                    )
 
         if fecha_fin_hist is not None and not pd.isna(fecha_fin_hist):
-            ax.axvline(pd.to_datetime(fecha_fin_hist), color="#555555", linestyle="--", linewidth=1.2, label="Fin histórico")
+            ax.axvline(
+                pd.to_datetime(fecha_fin_hist),
+                color=GRAY, linestyle="--", linewidth=1, label="Fin histórico"
+            )
 
-        ax.set_title(var_base, fontsize=11, fontweight="bold", pad=8)
-        ax.set_xlabel("Fecha", fontsize=8)
-        ax.set_ylabel("Valor", fontsize=8)
-        ax.grid(alpha=0.25)
-        ax.legend(fontsize=8, loc="best")
-        ax.tick_params(axis="both", labelsize=7)
+        ax.set_facecolor(WHITE)
+        ax.set_title(var_base, fontsize=11, fontweight="bold", color=NAVY)
+        ax.set_xlabel("Fecha", fontsize=8, color=MUTED)
+        ax.set_ylabel("Valor", fontsize=8, color=MUTED)
+        ax.grid(alpha=0.3, color=BORDER)
+        ax.legend(fontsize=7, loc="best", frameon=False)
+        ax.tick_params(axis="both", labelsize=7, colors=MUTED)
+        for spine in ax.spines.values():
+            spine.set_color(BORDER)
 
+    # Ocultar ejes sobrantes
+    for idx in range(n_vars, len(axes)):
+        axes[idx].set_visible(False)
+
+    fig.patch.set_facecolor(WHITE)
     plt.tight_layout()
     try:
-        plt.savefig(output_path, dpi=150, bbox_inches="tight")
+        plt.savefig(output_path, dpi=150, bbox_inches="tight", facecolor=WHITE)
     finally:
         plt.close("all")
     return output_path
+
 
 def graficar_fwl_estatico(doc_data, output_path):
     """Genera gráfica del Factor FWL a 12 meses con matplotlib."""
@@ -1097,12 +1119,14 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
 
     styles = getSampleStyleSheet()
 
-    # Paleta corporativa
-    VERDE_CORP = colors.HexColor("#2a7f3f")
-    ROJO_CORP = colors.HexColor("#b22222")
-    NARANJA_CORP = colors.HexColor("#e08a00")
-    GRIS_OSCURO = colors.HexColor("#333333")
-    GRIS_CLARO = colors.HexColor("#f5f5f5")
+    # Paleta corporativa (misma que el dashboard: NAVY/BLUE/GREEN/RED)
+    NAVY_CORP = colors.HexColor(NAVY)
+    AZUL_CORP = colors.HexColor(BLUE)
+    VERDE_CORP = colors.HexColor(GREEN)
+    ROJO_CORP = colors.HexColor(RED)
+    AMBAR_CORP = colors.HexColor("#B8860B")   # mismo tono que Score C / REGULAR en el app
+    GRIS_OSCURO = colors.HexColor(TEXT)
+    GRIS_CLARO = colors.HexColor(TINT)
     BLANCO = colors.white
 
     estilo_titulo = ParagraphStyle(
@@ -1110,7 +1134,7 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
         parent=styles["Heading1"],
         fontSize=22,
         leading=26,
-        textColor=VERDE_CORP,
+        textColor=NAVY_CORP,
         alignment=TA_CENTER,
         spaceAfter=20,
         fontName="Helvetica-Bold"
@@ -1132,7 +1156,7 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
         parent=styles["Heading2"],
         fontSize=16,
         leading=20,
-        textColor=VERDE_CORP,
+        textColor=NAVY_CORP,
         spaceBefore=20,
         spaceAfter=12,
         fontName="Helvetica-Bold",
@@ -1173,8 +1197,8 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
     )
 
     estilo_score_a = ParagraphStyle("ScoreA", parent=estilo_cuerpo, textColor=VERDE_CORP, fontName="Helvetica-Bold")
-    estilo_score_b = ParagraphStyle("ScoreB", parent=estilo_cuerpo, textColor=colors.HexColor("#c9a227"), fontName="Helvetica-Bold")
-    estilo_score_c = ParagraphStyle("ScoreC", parent=estilo_cuerpo, textColor=NARANJA_CORP, fontName="Helvetica-Bold")
+    estilo_score_b = ParagraphStyle("ScoreB", parent=estilo_cuerpo, textColor=AZUL_CORP, fontName="Helvetica-Bold")
+    estilo_score_c = ParagraphStyle("ScoreC", parent=estilo_cuerpo, textColor=AMBAR_CORP, fontName="Helvetica-Bold")
     estilo_score_d = ParagraphStyle("ScoreD", parent=estilo_cuerpo, textColor=ROJO_CORP, fontName="Helvetica-Bold")
 
     def estilo_por_score(score: str):
@@ -1182,14 +1206,14 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
 
     def tabla_estilo_base():
         return TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), VERDE_CORP),
+            ("BACKGROUND", (0, 0), (-1, 0), NAVY_CORP),
             ("TEXTCOLOR", (0, 0), (-1, 0), BLANCO),
             ("ALIGN", (0, 0), (-1, -1), "LEFT"),
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
             ("FONTSIZE", (0, 0), (-1, 0), 10),
             ("BOTTOMPADDING", (0, 0), (-1, 0), 10),
             ("BACKGROUND", (0, 1), (-1, -1), GRIS_CLARO),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.lightgrey),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor(BORDER)),
             ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
             ("FONTSIZE", (0, 1), (-1, -1), 9),
             ("LEFTPADDING", (0, 0), (-1, -1), 8),
@@ -1614,8 +1638,21 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
     story.append(Spacer(1, 0.15 * inch))
 
     if ruta_imagen_exog and os.path.exists(ruta_imagen_exog):
-        img = Image(ruta_imagen_exog, width=6.5 * inch, height=4.5 * inch)
-        story.append(img)
+        try:
+            from PIL import Image as PILImage
+            with PILImage.open(ruta_imagen_exog) as im:
+                img_w_px, img_h_px = im.size
+            aspecto = img_h_px / img_w_px
+            ancho_max = 6.5 * inch
+            alto_max = 8.8 * inch  # margen de página disponible
+            ancho = ancho_max
+            alto = ancho * aspecto
+            if alto > alto_max:
+                alto = alto_max
+                ancho = alto / aspecto
+            story.append(Image(ruta_imagen_exog, width=ancho, height=alto))
+        except Exception:
+            story.append(Image(ruta_imagen_exog, width=6.5 * inch, height=4.5 * inch))
     else:
         story.append(Paragraph("[Gráfica no disponible]", estilo_nota))
 
@@ -1684,7 +1721,7 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
     if clas_norm == "BUENO":
         color_clas = VERDE_CORP
     elif clas_norm == "REGULAR":
-        color_clas = NARANJA_CORP
+        color_clas = AMBAR_CORP
     else:
         color_clas = ROJO_CORP
 
@@ -2958,7 +2995,7 @@ with tab_dash:
                 st.markdown(
                     f'<div style="display:inline-block;background:#fff4d6;color:{NAVY};'
                     f'border:1px solid #f0d58a;border-radius:6px;padding:6px 10px;'
-                    f'font-size:12px;font-weight:700;margin:0 0 10px;">🎯 MODELO FINAL SELECCIONADO</div>',
+                    f'font-size:12px;font-weight:700;margin:0 0 10px;"> MODELO FINAL SELECCIONADO</div>',
                     unsafe_allow_html=True
                 )
             elif st.session_state.get("modelo_final"):
@@ -2981,7 +3018,7 @@ with tab_dash:
             with hcol3:
                 boton_favorito(st.session_state.modelo_seleccionado, key_suffix="detalle")
             with hcol4:
-                if st.button("🎯 Marcar como modelo final", key="btn_modelo_final_top", use_container_width=True):
+                if st.button(" Marcar como modelo final", key="btn_modelo_final_top", use_container_width=True):
                     with st.spinner("Generando documento metodológico..."):
                         ok = generar_y_guardar_documentos(st.session_state.modelo_seleccionado)
                     if ok:
@@ -3187,7 +3224,7 @@ with tab_dash:
             st.markdown(divider(), unsafe_allow_html=True)
             cfinal1, cfinal2, cfinal3 = st.columns([1.3, 1, 1])
             with cfinal1:
-                if st.button("🎯 Marcar como modelo final", key="btn_modelo_final_bottom", use_container_width=True):
+                if st.button(" Marcar como modelo final", key="btn_modelo_final_bottom", use_container_width=True):
                     with st.spinner("Generando documento metodológico..."):
                         ok = generar_y_guardar_documentos(st.session_state.modelo_seleccionado)
                     if ok:
