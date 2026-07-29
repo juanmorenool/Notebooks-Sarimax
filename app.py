@@ -904,106 +904,115 @@ def generar_pdf_metodologico(doc_data, ruta_imagen):
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
 
-    # Portada
+    # === PORTADA ===
     pdf.add_page()
     pdf.set_font("Helvetica", "B", 16)
-    _pdf_texto(pdf, "Documento Metodologico SARIMAX")
-    pdf.set_font("Helvetica", "", 12)
-    _pdf_texto(pdf, f"Modelo final: {doc_data.get('nombre_modelo', 'N/A')}")
-    _pdf_texto(pdf, f"Fecha de generacion: {doc_data.get('fecha_generacion', 'N/A')}")
-    _pdf_texto(pdf, f"Pais: {doc_data.get('meta_kpis', {}).get('pais', 'N/A')}")
-    _pdf_texto(pdf, f"Cartera: {doc_data.get('meta_kpis', {}).get('cartera', 'N/A')}")
-
-    # Metodologia
-    pdf.ln(4)
-    pdf.set_font("Helvetica", "B", 13)
-    _pdf_texto(pdf, "Metodologia")
+    pdf.cell(0, 10, "Documento Metodologico SARIMAX IFRS 9", ln=True, align="C")
     pdf.set_font("Helvetica", "", 11)
-    _pdf_texto(pdf, TEXTO_METODOLOGIA_SARIMAX)
+    pdf.cell(0, 8, f"Modelo: {doc_data.get('nombre_modelo', 'N/A')}", ln=True, align="C")
+    pdf.cell(0, 8, f"Fecha: {doc_data.get('fecha_generacion', 'N/A')}", ln=True, align="C")
+    pdf.cell(0, 8, f"Pais: {doc_data.get('meta_kpis', {}).get('pais', 'N/A')}", ln=True, align="C")
+    pdf.cell(0, 8, f"Cartera: {doc_data.get('meta_kpis', {}).get('cartera', 'N/A')}", ln=True, align="C")
+    score_num = doc_data.get('score_global_num')
+    score_clase = doc_data.get('score_global_clase', 'N/A')
+    score_txt = f"{score_num:.1f}/10 - {score_clase}" if score_num is not None else "N/A"
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 10, f"Score Global: {score_txt}", ln=True, align="C")
+    pdf.ln(5)
 
-    # Configuracion + glosarios
-    pdf.ln(2)
-    pdf.set_font("Helvetica", "B", 13)
-    _pdf_texto(pdf, "Configuracion")
-    pdf.set_font("Helvetica", "", 10)
-    config_rows = [
+    # === CONFIGURACION ===
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 8, "Configuracion del Motor", ln=True)
+    pdf.set_font("Helvetica", "", 9)
+    config = [
+        ("Pais", doc_data.get("meta_kpis", {}).get("pais", "N/A")),
+        ("Cartera", doc_data.get("meta_kpis", {}).get("cartera", "N/A")),
         ("Tipo endogena", doc_data.get("meta_kpis", {}).get("tipo_endogena", "N/A")),
         ("Modo endogena", doc_data.get("meta_kpis", {}).get("modo_endogena", "N/A")),
-        ("Ventana MM", doc_data.get("meta_kpis", {}).get("ventana_mm", "N/A")),
-        ("VIF max", doc_data.get("vif_max", "N/A")),
+        ("Ventana MM", str(doc_data.get("meta_kpis", {}).get("ventana_mm", "N/A"))),
+        ("VIF max", str(doc_data.get("vif_max", "N/A"))),
         ("Rango FWL", f"{doc_data.get('fwl_min', 'N/A')} - {doc_data.get('fwl_max', 'N/A')}"),
-        ("Max exogenas", doc_data.get("max_exog", "N/A")),
-        ("Top exportar", doc_data.get("top_exportar", "N/A")),
-        ("Umbral sensibilidad", doc_data.get("umbral_sensibilidad", "N/A")),
+        ("Max exogenas", str(doc_data.get("max_exog", "N/A"))),
+        ("Top exportar", str(doc_data.get("top_exportar", "N/A"))),
+        ("Umbral sensibilidad", str(doc_data.get("umbral_sensibilidad", "N/A"))),
         ("AR / MA", f"{doc_data.get('ar_count', 0)} / {doc_data.get('ma_count', 0)}"),
     ]
-    for k, v in config_rows:
-        _pdf_texto(pdf, f"- {k}: {v}")
-    pdf.ln(1)
-    _pdf_texto(pdf, GLOSARIO_FWL)
-    _pdf_texto(pdf, GLOSARIO_LOGIT)
-    _pdf_texto(pdf, GLOSARIO_MODO)
-    _pdf_texto(pdf, GLOSARIO_SENSIBILIDAD)
-    _pdf_texto(pdf, GLOSARIO_PARAMETROS)
+    for k, v in config:
+        pdf.cell(60, 6, k, border=1)
+        pdf.cell(0, 6, str(v), border=1, ln=True)
+    pdf.ln(5)
 
-    # Variables exogenas
-    pdf.ln(2)
-    pdf.set_font("Helvetica", "B", 13)
-    _pdf_texto(pdf, "Variables Exogenas")
-    pdf.set_font("Helvetica", "", 10)
+    # === EXOGENAS ===
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 8, "Variables Exogenas", ln=True)
+    pdf.set_font("Helvetica", "", 9)
     exogenas = doc_data.get("exogenas", [])
-    if not exogenas:
-        _pdf_texto(pdf, "Sin exogenas disponibles.")
-    else:
+    if exogenas:
+        pdf.set_fill_color(42, 127, 63)
+        pdf.set_text_color(255, 255, 255)
+        pdf.cell(80, 7, "Variable", border=1, fill=True)
+        pdf.cell(40, 7, "P-valor", border=1, fill=True)
+        pdf.cell(40, 7, "Estado", border=1, fill=True, ln=True)
+        pdf.set_text_color(0, 0, 0)
         for row in exogenas:
-            ptxt = fmt_pvalor(row.get("p_value"))
-            _pdf_texto(pdf, f"- {row.get('exogena', '')}: {row.get('estado', 'N/A')} (p={ptxt})")
+            p = row.get("p_value")
+            ptxt = f"{p:.4f}" if p is not None else "N/A"
+            pdf.cell(80, 6, str(row.get("exogena", "")), border=1)
+            pdf.cell(40, 6, ptxt, border=1)
+            pdf.cell(40, 6, str(row.get("estado", "")), border=1, ln=True)
+    else:
+        pdf.cell(0, 6, "Sin exogenas disponibles.", ln=True)
+    pdf.ln(5)
 
-    # Grafica macros
-    pdf.add_page()
-    pdf.set_font("Helvetica", "B", 13)
-    _pdf_texto(pdf, "Grafica de Macros (Exogenas)")
+    # === GRAFICA ===
     if ruta_imagen and os.path.exists(ruta_imagen):
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.cell(0, 8, "Grafica de Macros (Exogenas)", ln=True)
         try:
-            pdf.image(ruta_imagen, x=10, y=30, w=185)
-            pdf.ln(105)
+            pdf.image(ruta_imagen, x=10, w=190)
+            pdf.ln(5)
         except Exception:
-            pdf.set_font("Helvetica", "", 10)
-            _pdf_texto(pdf, "No fue posible insertar la grafica de macros en el PDF.")
-    else:
-        pdf.set_font("Helvetica", "", 10)
-        _pdf_texto(pdf, "No fue posible generar la grafica de macros.")
+            pdf.set_font("Helvetica", "", 9)
+            pdf.cell(0, 6, "No fue posible insertar la grafica.", ln=True)
 
-    # Diagnosticos
-    pdf.set_font("Helvetica", "B", 13)
-    _pdf_texto(pdf, "Diagnosticos")
-    pdf.set_font("Helvetica", "", 10)
+    # === DIAGNOSTICOS (nueva pagina) ===
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 8, "Diagnosticos", ln=True)
+    pdf.set_font("Helvetica", "", 9)
     diagnosticos = doc_data.get("diagnosticos", [])
-    if not diagnosticos:
-        _pdf_texto(pdf, "Sin pruebas de diagnostico disponibles.")
-    else:
+    if diagnosticos:
+        pdf.set_fill_color(42, 127, 63)
+        pdf.set_text_color(255, 255, 255)
+        pdf.cell(45, 7, "Prueba", border=1, fill=True)
+        pdf.cell(25, 7, "Score", border=1, fill=True)
+        pdf.cell(35, 7, "Estadistico", border=1, fill=True)
+        pdf.cell(30, 7, "P-valor", border=1, fill=True)
+        pdf.cell(0, 7, "Interpretacion", border=1, fill=True, ln=True)
+        pdf.set_text_color(0, 0, 0)
         for d in diagnosticos:
-            _pdf_texto(
-                pdf,
-                f"- {d.get('prueba', 'N/A')} | Score {d.get('score', 'N/A')} | "
-                f"Estadistico={fmt_pvalor(d.get('estadistico'))} | p={fmt_pvalor(d.get('p_value'))}"
-            )
-            _pdf_texto(pdf, f"  {d.get('interpretacion', '')}")
+            pdf.cell(45, 6, str(d.get("prueba", ""))[:22], border=1)
+            pdf.cell(25, 6, str(d.get("score", "")), border=1)
+            pdf.cell(35, 6, fmt_pvalor(d.get("estadistico")), border=1)
+            pdf.cell(30, 6, fmt_pvalor(d.get("p_value")), border=1)
+            # Texto corto, truncado a 40 chars para evitar overflow
+            interp = str(d.get("interpretacion", ""))[:40]
+            pdf.cell(0, 6, interp, border=1, ln=True)
+    else:
+        pdf.cell(0, 6, "Sin pruebas de diagnostico disponibles.", ln=True)
 
-    # Score global y conclusion
-    pdf.ln(2)
-    pdf.set_font("Helvetica", "B", 13)
-    _pdf_texto(pdf, "Score Global y Conclusion")
-    pdf.set_font("Helvetica", "", 11)
-    score_num = doc_data.get("score_global_num")
-    score_txt = f"{score_num:.1f}/10" if score_num is not None else "N/A"
-    _pdf_texto(pdf, f"Score Global: {score_txt} - {doc_data.get('score_global_clase', 'N/A')}")
-    _pdf_texto(pdf, doc_data.get("score_global_conclusion", ""))
+    pdf.ln(5)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(0, 8, f"Conclusion: {score_txt}", ln=True)
+    pdf.set_font("Helvetica", "", 9)
+    conclusion = str(doc_data.get("score_global_conclusion", ""))[:200]
+    pdf.cell(0, 6, conclusion, ln=True)
 
     pdf_raw = pdf.output(dest="S")
     if isinstance(pdf_raw, (bytes, bytearray)):
         return bytes(pdf_raw)
     return str(pdf_raw).encode("latin-1", "ignore")
+
 
 def generar_excel_metodologico(doc_data, ruta_imagen):
     wb = openpyxl.Workbook()
