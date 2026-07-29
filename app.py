@@ -713,6 +713,11 @@ def render_leyenda_scores():
 # =============================================================================
 # METADATA
 # =============================================================================
+def truncar_texto(texto, max_len=40):
+    """Trunca texto largo con '...' para evitar desbordamiento en tablas PDF."""
+    s = str(texto)
+    return s if len(s) <= max_len else s[:max_len-3] + "..."
+
 def extraer_kpis_meta(meta, fallback_meta=None):
     src = meta if meta else fallback_meta
     if not src:
@@ -1443,7 +1448,10 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
             str(row.get("tipo", "N/A"))
         ])
     if coef_count > 0:
-        tabla_coef = Table(coef_data, colWidths=[2.8 * inch, 1.3 * inch, 1.1 * inch, 1.0 * inch])
+        # Truncar nombres de variables muy largos para evitar desbordamiento
+        for row in coef_data[1:]:
+            row[0] = truncar_texto(row[0], max_len=42)
+        tabla_coef = Table(coef_data, colWidths=[3.2 * inch, 1.1 * inch, 1.0 * inch, 0.9 * inch])
         tabla_coef.setStyle(tabla_estilo_base())
         story.append(tabla_coef)
     else:
@@ -1728,7 +1736,9 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
             ])
 
     if exo_count > 0:
-        tabla_exo = Table(exo_data, colWidths=[2.4 * inch, 1.3 * inch, 1.1 * inch, 1.1 * inch])
+        for row in exo_data[1:]:
+            row[0] = truncar_texto(row[0], max_len=42)
+        tabla_exo = Table(exo_data, colWidths=[3.0 * inch, 1.1 * inch, 1.0 * inch, 1.0 * inch])
         tabla_exo.setStyle(tabla_estilo_base())
         story.append(tabla_exo)
     else:
