@@ -9,6 +9,12 @@ import os
 import base64
 import openpyxl
 from pathlib import Path
+from datetime import datetime
+from io import BytesIO
+import tempfile
+import matplotlib.pyplot as plt
+from fpdf import FPDF
+from openpyxl.drawing.image import Image as XLImage
 
 # =============================================================================
 # PALETA CORPORATIVA BANCA
@@ -94,6 +100,23 @@ CARTERA_LABEL_GEN = {
     'tarjeta': 'Tarjeta',
     'vehiculo': 'Vehiculo',
 }
+
+# =============================================================================
+# TEXTOS DOCUMENTO METODOLOGICO
+# =============================================================================
+TEXTO_METODOLOGIA_SARIMAX = (
+    "Este documento resume la seleccion final de un modelo SARIMAX para IFRS 9. "
+    "El motor sigue 8 bloques: (1) carga y validacion de insumos, (2) limpieza y "
+    "transformaciones, (3) construccion de escenarios, (4) busqueda de rezagos AR/MA, "
+    "(5) ajuste econometrico, (6) diagnosticos de residuos, (7) filtros tecnicos y "
+    "(8) exportacion con trazabilidad."
+)
+
+GLOSARIO_FWL = "FWL [CAMPO]: factor de ajuste por escenario macro utilizado para sensibilidad y consistencia del modelo."
+GLOSARIO_LOGIT = "LOGIT [CAMPO]: transformacion logit de la endogena para estabilizar escala y mejorar ajuste."
+GLOSARIO_MODO = "MODO [CAMPO]: estrategia de construccion de la endogena (actual o media movil)."
+GLOSARIO_SENSIBILIDAD = "SENSIBILIDAD [CAMPO]: diferencia entre medias de escenarios OPT y ADV para validar reaccion del modelo."
+GLOSARIO_PARAMETROS = "PARAMETROS [CAMPO]: conjunto de hiperparametros del motor (max lags, VIF, top exportar y rangos FWL)."
 
 def inject_css():
     st.markdown(f"""
@@ -554,21 +577,66 @@ def calcular_score_global(pruebas_df):
         return None, detalle
     return round(acumulado / peso_total, 1), detalle
 
-def clasificar_score_global(score):
-    if score is None:
-        return "N/A", GRAY, ESTADO_NEUTRAL[0]
-    if score >= 7:
-        return "BUENO", GREEN, ESTADO_OK[0]
-    elif score >= 5:
-        return "REGULAR", "#B8860B", ESTADO_WARN[0]
-    else:
-        return "DEFICIENTE", RED, ESTADO_FAIL[0]
+def clasificar_score_global(score_num):
+    if score_num is None:
+        return "N/A", "No hay informacion suficiente para concluir la calidad global del modelo."
+    if score_num >= 7:
+        return "BUENO", "El modelo presenta diagnosticos robustos y consistentes para uso oficial."
+    if score_num >= 5:
+        return "REGULAR", "El modelo es util, pero requiere seguimiento y ajustes focalizados."
+    return "DEFICIENTE", "El modelo no cumple criterios minimos para seleccion final sin reprocesamiento."
+
+def estilo_score_global(score_num):
+    etiqueta, _ = clasificar_score_global(score_num)
+    if etiqueta == "N/A":
+        return etiqueta, GRAY, ESTADO_NEUTRAL[0]
+    if etiqueta == "BUENO":
+        return etiqueta, GREEN, ESTADO_OK[0]
+    if etiqueta == "REGULAR":
+        return etiqueta, "#B8860B", ESTADO_WARN[0]
+    return etiqueta, RED, ESTADO_FAIL[0]
 
 def score_global_badge(score, tamano="12px"):
-    etiqueta, color, bg = clasificar_score_global(score)
+    etiqueta, color, bg = estilo_score_global(score)
     valor = f"{score:.1f}/10" if score is not None else "N/A"
     return (f'<span style="background:{bg};color:{color};font-size:{tamano};padding:3px 10px;'
             f'border-radius:4px;font-weight:700;">{valor} - {etiqueta}</span>')
+
+def texto_ljungbox(score, p):
+    p_str = fmt_pvalor(p)
+    if score == "A":
+        return f"A: p={p_str}. Sin evidencia de autocorrelacion en residuos."
+    if score == "B":
+        return f"B: p={p_str}. Comportamiento aceptable, sin evidencia fuerte de autocorrelacion."
+    if score == "C":
+        return f"C: p={p_str}. Senal moderada de autocorrelacion; requiere monitoreo."
+    if score == "D":
+        return f"D: p={p_str}. Evidencia clara de autocorrelacion; requiere ajuste del modelo."
+    return "Sin datos para interpretar Ljung-Box."
+
+def texto_jarquebera(score, p):
+    p_str = fmt_pvalor(p)
+    if score == "A":
+        return f"A: p={p_str}. Residuos consistentes con normalidad."
+    if score == "B":
+        return f"B: p={p_str}. Normalidad razonable para analisis operativo."
+    if score == "C":
+        return f"C: p={p_str}. Posible desvio de normalidad; revisar outliers o transformaciones."
+    if score == "D":
+        return f"D: p={p_str}. No normalidad marcada de residuos."
+    return "Sin datos para interpretar Jarque-Bera."
+
+def texto_hetero(score, p):
+    p_str = fmt_pvalor(p)
+    if score == "A":
+        return f"A: p={p_str}. Varianza de residuos estable."
+    if score == "B":
+        return f"B: p={p_str}. Sin evidencia significativa de heterocedasticidad."
+    if score == "C":
+        return f"C: p={p_str}. Senal debil de heterocedasticidad; monitorear estabilidad."
+    if score == "D":
+        return f"D: p={p_str}. Evidencia de heterocedasticidad; revisar especificacion."
+    return "Sin datos para interpretar heterocedasticidad."
 
 def interpretar_prueba(nombre_prueba, p_val, score):
     if score == 'N/A' or p_val is None or (isinstance(p_val, float) and pd.isna(p_val)):
