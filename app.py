@@ -1070,7 +1070,10 @@ def generar_excel_metodologico(doc_data, ruta_imagen):
     return buff.getvalue()
 
 @st.dialog("Confirmación de modelo final")
+def dialogo_confirmacion_modelo_final():
+    nombre = st.session_state.get("modelo_candidato_final")
     if not nombre:
+        st.session_state.mostrar_confirmacion_final = False
         return
     st.write(
         f"¿Confirma que [{nombre}] es el modelo final? Esta acción generará el documento "
@@ -1126,6 +1129,8 @@ def generar_excel_metodologico(doc_data, ruta_imagen):
             st.session_state.documento_metodologico_pdf_nombre = f"Documento_Metodologico_{nombre_archivo}.pdf"
             st.session_state.documento_metodologico_excel_nombre = f"Documento_Metodologico_{nombre_archivo}.xlsx"
             st.session_state.documento_metodologico_data = doc_data
+            st.session_state.mostrar_confirmacion_final = False
+            st.session_state.modelo_candidato_final = None
             st.rerun()
         except Exception as e:
             st.error(f"No fue posible guardar el documento metodológico: {e}")
@@ -1134,58 +1139,9 @@ def generar_excel_metodologico(doc_data, ruta_imagen):
             if ruta_tmp and os.path.exists(ruta_tmp):
                 os.remove(ruta_tmp)
     if c2.button("Cancelar", use_container_width=True):
+        st.session_state.mostrar_confirmacion_final = False
+        st.session_state.modelo_candidato_final = None
         st.rerun()
-
-
-def generar_y_guardar_documentos(nombre_modelo):
-    """Genera PDF + Excel, guarda en session_state, retorna True/False."""
-    try:
-        doc_data = recolectar_datos_documento(
-            nombre_modelo,
-            st.session_state.modelos_data,
-            st.session_state.meta_contexto
-        )
-    except Exception as e:
-        st.error(f"Error recolectando datos: {e}")
-        return False
-
-    ruta_tmp = None
-    try:
-        tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-        ruta_tmp = tmp.name
-        tmp.close()
-        graficar_macros_estatico(doc_data, ruta_tmp)
-    except Exception as e:
-        st.warning(f"Gráfica no generada: {e}")
-        ruta_tmp = None
-
-    try:
-        pdf_bytes = generar_pdf_metodologico(doc_data, ruta_tmp)
-    except Exception as e:
-        st.error(f"Error generando PDF: {e}")
-        if ruta_tmp and os.path.exists(ruta_tmp):
-            os.remove(ruta_tmp)
-        return False
-
-    try:
-        excel_bytes = generar_excel_metodologico(doc_data, ruta_tmp)
-    except Exception as e:
-        st.error(f"Error generando Excel: {e}")
-        if ruta_tmp and os.path.exists(ruta_tmp):
-            os.remove(ruta_tmp)
-        return False
-
-    if ruta_tmp and os.path.exists(ruta_tmp):
-        os.remove(ruta_tmp)
-
-    nombre_archivo = _normalizar_nombre_archivo(nombre_modelo)
-    st.session_state.modelo_final = nombre_modelo
-    st.session_state.documento_metodologico_pdf = pdf_bytes
-    st.session_state.documento_metodologico_excel = excel_bytes
-    st.session_state.documento_metodologico_pdf_nombre = f"Documento_Metodologico_{nombre_archivo}.pdf"
-    st.session_state.documento_metodologico_excel_nombre = f"Documento_Metodologico_{nombre_archivo}.xlsx"
-    st.session_state.documento_metodologico_data = doc_data
-    return True
 
 # =============================================================================
 # PLOTS
@@ -1991,6 +1947,8 @@ for key, default in [
     ("uploaded_file", None), ("modelos_data", {}), ("meta_contexto", None),
     ("modelo_seleccionado", None),
     ("modelo_final", None),
+    ("modelo_candidato_final", None),
+    ("mostrar_confirmacion_final", False),
     ("documento_metodologico_pdf", None),
     ("documento_metodologico_excel", None),
     ("documento_metodologico_pdf_nombre", None),
@@ -2128,6 +2086,8 @@ with tab_dash:
                     st.session_state.vista_resumen = True
                     st.session_state.comparar_sel = []
                     st.session_state.modelo_final = None
+                    st.session_state.modelo_candidato_final = None
+                    st.session_state.mostrar_confirmacion_final = False
                     st.session_state.documento_metodologico_pdf = None
                     st.session_state.documento_metodologico_excel = None
                     st.session_state.documento_metodologico_pdf_nombre = None
@@ -2147,6 +2107,8 @@ with tab_dash:
                 st.session_state.vista_resumen = True
                 st.session_state.comparar_sel = []
                 st.session_state.modelo_final = None
+                st.session_state.modelo_candidato_final = None
+                st.session_state.mostrar_confirmacion_final = False
                 st.session_state.documento_metodologico_pdf = None
                 st.session_state.documento_metodologico_excel = None
                 st.session_state.documento_metodologico_pdf_nombre = None
@@ -2198,17 +2160,17 @@ with tab_dash:
                                     key="criterio_orden")
                 st.session_state.criterio_ordenamiento = criterio
                 st.markdown(f"<p style='font-size:10px;color:{MUTED};margin:8px 0 4px;'>Ljung-Box</p>", unsafe_allow_html=True)
-                filtro_ljung = st.selectbox("", ["Todos", "A o B (Cumple)", "A, B o C", "Solo A"],
+                filtro_ljung = st.selectbox("Filtro Ljung-Box", ["Todos", "A o B (Cumple)", "A, B o C", "Solo A"],
                                              index=["Todos", "A o B (Cumple)", "A, B o C", "Solo A"].index(st.session_state.filtro_ljung),
                                              key="filtro_ljung_sel", label_visibility="collapsed")
                 st.session_state.filtro_ljung = filtro_ljung
                 st.markdown(f"<p style='font-size:10px;color:{MUTED};margin:8px 0 4px;'>Jarque-Bera</p>", unsafe_allow_html=True)
-                filtro_jarque = st.selectbox("", ["Todos", "A o B (Cumple)", "A, B o C", "Solo A"],
+                filtro_jarque = st.selectbox("Filtro Jarque-Bera", ["Todos", "A o B (Cumple)", "A, B o C", "Solo A"],
                                               index=["Todos", "A o B (Cumple)", "A, B o C", "Solo A"].index(st.session_state.filtro_jarque),
                                               key="filtro_jarque_sel", label_visibility="collapsed")
                 st.session_state.filtro_jarque = filtro_jarque
                 st.markdown(f"<p style='font-size:10px;color:{MUTED};margin:8px 0 4px;'>Heterocedasticidad</p>", unsafe_allow_html=True)
-                filtro_hetero = st.selectbox("", ["Todos", "A o B (Cumple)", "A, B o C", "Solo A"],
+                filtro_hetero = st.selectbox("Filtro Heterocedasticidad", ["Todos", "A o B (Cumple)", "A, B o C", "Solo A"],
                                               index=["Todos", "A o B (Cumple)", "A, B o C", "Solo A"].index(st.session_state.filtro_hetero),
                                               key="filtro_hetero_sel", label_visibility="collapsed")
                 st.session_state.filtro_hetero = filtro_hetero
@@ -2280,6 +2242,8 @@ with tab_dash:
             """, unsafe_allow_html=True)
         else:
             datos = st.session_state.modelos_data.get(st.session_state.modelo_seleccionado, {})
+            if st.session_state.get("mostrar_confirmacion_final"):
+                dialogo_confirmacion_modelo_final()
             meta_kpis = extraer_kpis_meta(st.session_state.meta_contexto)
             pais = meta_kpis.get('pais', '-')
             cartera = meta_kpis.get('cartera', '-')
@@ -2328,11 +2292,12 @@ with tab_dash:
                 boton_favorito(st.session_state.modelo_seleccionado, key_suffix="detalle")
             with hcol4:
                 if st.button("🎯 Marcar como modelo final", key="btn_modelo_final_top", use_container_width=True):
-                    with st.spinner("Generando documento metodológico..."):
-                        ok = generar_y_guardar_documentos(st.session_state.modelo_seleccionado)
-                    if ok:
-                        st.success("✅ Documento generado. Descarga abajo.")
+                    st.session_state.modelo_candidato_final = st.session_state.modelo_seleccionado
+                    st.session_state.mostrar_confirmacion_final = True
                     st.rerun()
+            modelos_list, pruebas_dict_nav, scores_dict_nav, global_dict_nav = construir_opciones_modelos()
+            current_idx = modelos_list.index(st.session_state.modelo_seleccionado) if st.session_state.modelo_seleccionado in modelos_list else 0
+            tab_resumen, tab1, tab2, tab3, tab4 = st.tabs(["Resumen Modelo", "Visualizacion", "Predicciones", "Diagnosticos", "Comparar"])
             # =====================================================================
             # TAB 0: RESUMEN MODELO
             # =====================================================================
@@ -2531,11 +2496,12 @@ with tab_dash:
             cfinal1, cfinal2, cfinal3 = st.columns([1.3, 1, 1])
             with cfinal1:
                 if st.button("🎯 Marcar como modelo final", key="btn_modelo_final_bottom", use_container_width=True):
-                with st.spinner("Generando documento metodológico..."):
-                    ok = generar_y_guardar_documentos(st.session_state.modelo_seleccionado)
-                if ok:
-                    st.success("✅ Documento generado. Descarga abajo.")
-                st.rerun()
+                    st.session_state.modelo_candidato_final = st.session_state.modelo_seleccionado
+                    st.session_state.mostrar_confirmacion_final = True
+                    st.rerun()
+            with cfinal2:
+                st.download_button(
+                    "⬇️ Descargar PDF",
                     data=st.session_state.documento_metodologico_pdf or b"",
                     file_name=st.session_state.documento_metodologico_pdf_nombre or "Documento_Metodologico.pdf",
                     mime="application/pdf",
