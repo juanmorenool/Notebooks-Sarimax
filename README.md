@@ -314,6 +314,6 @@ Proyecto interno — Uso exclusivo del equipo de Modelos de Riesgo / IFRS 9.
 
 ---
 
-> **Autor**: Equipo de Modelos Cuantitativos  
-> **Versión**: 2025  
+>   
+> **Versión**:  V 8.0 2026 
 > **Contexto**: Provisión de cartera bajo NIIF 9 / IFRS 9 — Modelos SARIMAX con variables macroeconómicas.
