@@ -823,6 +823,7 @@ def recolectar_datos_documento(nombre_modelo, modelos_data, meta_contexto):
         "umbral_sensibilidad": (meta_contexto or {}).get("motor_umbral_sensibilidad", "N/A"),
         "data_exogenas": modelo.get("exogenas"),
         "observaciones": modelo.get("observaciones", 0),
+        "data_fwl_12m": modelo.get("fwl_12m"),
         "fecha_fin_hist": _obtener_fecha_fin_hist(meta_contexto or {}),
     }
 
@@ -837,122 +838,120 @@ def graficar_macros_estatico(doc_data, output_path):
     if df.empty:
         return None
 
-    escenarios = [
-        ("_BASE", "Base", "#2a7f3f"),
-        ("_ADVERSO", "Adverso", "#b22222"),
-        ("_OPTIMISTA", "Optimista", "#e08a00"),
-    ]
-    plt.close("all")
-    plt.figure(figsize=(10, 5))
-    dibujado = 0
-    for sufijo, etiqueta, color in escenarios:
-        cols = [c for c in df.columns if str(c).upper().endswith(sufijo)]
-        if not cols:
+    # Detectar variables exógenas base (sin sufijo _BASE/_ADVERSO/_OPTIMISTA)
+    escenarios = ["_BASE", "_ADVERSO", "_OPTIMISTA"]
+    colores_esc = {"_BASE": "#2a7f3f", "_ADVERSO": "#b22222", "_OPTIMISTA": "#e08a00"}
+    nombres_esc = {"_BASE": "Base", "_ADVERSO": "Adverso", "_OPTIMISTA": "Optimista"}
+
+    # Identificar variables base únicas
+    vars_base = set()
+    for col in df.columns:
+        if col == fecha_col:
             continue
-        serie = df[cols].apply(pd.to_numeric, errors="coerce").mean(axis=1)
-        if serie.notna().any():
-            plt.plot(df[fecha_col], serie, label=etiqueta, color=color, linewidth=2)
-            dibujado += 1
+        base_name = col
+        for suf in escenarios:
+            if str(col).upper().endswith(suf):
+                base_name = col[:-len(suf)]
+                break
+        vars_base.add(base_name)
+
+    vars_base = sorted([v for v in vars_base if v != fecha_col])
+    if not vars_base:
+        return None
+
+    n_vars = len(vars_base)
+    n_cols = min(2, n_vars)
+    n_rows = (n_vars + n_cols - 1) // n_cols
+
+    plt.close("all")
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(6 * n_cols, 3.5 * n_rows), squeeze=False)
+    axes = axes.flatten()
 
     fecha_fin_hist = doc_data.get("fecha_fin_hist")
-    if fecha_fin_hist is not None and not pd.isna(fecha_fin_hist):
-        plt.axvline(pd.to_datetime(fecha_fin_hist), color="#555555", linestyle="--", linewidth=1.5, label="Fin histórico")
 
-    plt.title("Trayectoria de Exógenas por Escenario")
-    plt.xlabel("Fecha")
-    plt.ylabel("Nivel agregado")
-    plt.grid(alpha=0.25)
-    if dibujado > 0:
-        plt.legend()
+    for idx, var_base in enumerate(vars_base):
+        ax = axes[idx]
+        for suf in escenarios:
+            col_name = var_base + suf
+            col_match = None
+            for c in df.columns:
+                if str(c).upper() == col_name.upper():
+                    col_match = c
+                    break
+            if col_match is not None:
+                serie = pd.to_numeric(df[col_match], errors="coerce")
+                if serie.notna().any():
+                    ax.plot(df[fecha_col], serie, label=nombres_esc[suf], color=colores_esc[suf], linewidth=1.5)
+
+        if fecha_fin_hist is not None and not pd.isna(fecha_fin_hist):
+            ax.axvline(pd.to_datetime(fecha_fin_hist), color="#555555", linestyle="--", linewidth=1, label="Fin histórico")
+
+        ax.set_title(var_base, fontsize=10, fontweight="bold")
+        ax.set_xlabel("Fecha", fontsize=8)
+        ax.set_ylabel("Valor", fontsize=8)
+        ax.grid(alpha=0.25)
+        ax.legend(fontsize=7, loc="best")
+        ax.tick_params(axis="both", labelsize=7)
+
+    # Ocultar ejes sobrantes
+    for idx in range(n_vars, len(axes)):
+        axes[idx].set_visible(False)
+
     plt.tight_layout()
     try:
-        plt.savefig(output_path, dpi=150)
+        plt.savefig(output_path, dpi=150, bbox_inches="tight")
     finally:
         plt.close("all")
     return output_path
 
-def _pdf_texto(pdf, txt, h=6, max_chars_palabra=40):
-    """
-    Escribe texto en el PDF evitando el bloqueo infinito de FPDF/fpdf2
-    cuando un token sin espacios (nombre de variable, numero largo, URL, etc.)
-    es mas ancho que la celda disponible. Sin esta proteccion, multi_cell
-    puede quedarse en un loop infinito intentando ajustar el texto, lo que
-    hace que la app de Streamlit se "cuelgue" y termine desconectandose.
-    """
-    seguro = str(txt).encode("latin-1", "ignore").decode("latin-1")
 
-    # Inserta espacios dentro de cualquier token demasiado largo para que
-    # multi_cell siempre pueda encontrar un punto de corte, sin importar
-    # si la version de fpdf instalada soporta wrapmode="CHAR" o no.
-    palabras_seguras = []
-    for palabra in seguro.split(" "):
-        if len(palabra) > max_chars_palabra:
-            trozos = [palabra[i:i + max_chars_palabra] for i in range(0, len(palabra), max_chars_palabra)]
-            palabras_seguras.append(" ".join(trozos))
-        else:
-            palabras_seguras.append(palabra)
-    seguro = " ".join(palabras_seguras)
+def graficar_fwl_estatico(doc_data, output_path):
+    """Genera gráfica del Factor FWL a 12 meses con matplotlib."""
+    df_fwl = doc_data.get("data_fwl_12m")
+    if df_fwl is None or df_fwl.empty:
+        return None
+    df = df_fwl.copy()
+    fecha_col = None
+    for c in df.columns:
+        if 'fecha' in str(c).lower():
+            fecha_col = c
+            break
+    if fecha_col is None:
+        fecha_col = df.columns[0]
+    df[fecha_col] = pd.to_datetime(df[fecha_col], errors="coerce")
+    df = df.dropna(subset=[fecha_col]).sort_values(fecha_col)
+    if df.empty:
+        return None
 
-    if not seguro.strip():
-        seguro = " "
+    plt.close("all")
+    fig, ax = plt.subplots(figsize=(10, 4.5))
 
+    colores = {"FWL_BASE": "#2a7f3f", "FWL_ADVERSO": "#b22222", "FWL_OPTIMISTA": "#e08a00"}
+    nombres = {"FWL_BASE": "Base", "FWL_ADVERSO": "Adverso", "FWL_OPTIMISTA": "Optimista"}
+
+    for col in df.columns:
+        col_up = str(col).upper()
+        if col_up in colores:
+            serie = pd.to_numeric(df[col], errors="coerce")
+            if serie.notna().any():
+                ax.plot(df[fecha_col], serie, label=nombres.get(col_up, col), color=colores[col_up], linewidth=2)
+
+    fecha_fin_hist = doc_data.get("fecha_fin_hist")
+    if fecha_fin_hist is not None and not pd.isna(fecha_fin_hist):
+        ax.axvline(pd.to_datetime(fecha_fin_hist), color="#555555", linestyle="--", linewidth=1.5, label="Fin histórico")
+
+    ax.set_title("Factor FWL a 12 Meses", fontsize=12, fontweight="bold", pad=10)
+    ax.set_xlabel("Fecha", fontsize=9)
+    ax.set_ylabel("FWL", fontsize=9)
+    ax.grid(alpha=0.25)
+    ax.legend(fontsize=8, loc="best")
+    ax.tick_params(axis="both", labelsize=8)
+    plt.tight_layout()
     try:
-        pdf.multi_cell(0, h, seguro, wrapmode="CHAR")
-    except TypeError:
-        pdf.multi_cell(0, h, seguro)
-
-
-# =============================================================================
-# CONSTANTES DE TEXTO METODOLÓGICO (reportlab)
-# =============================================================================
-
-TEXTO_METODOLOGIA_SARIMAX = (
-    "El modelo SARIMAX (Seasonal AutoRegressive Integrated Moving Average with "
-    "eXogenous regressors) es una extensión del modelo ARIMA que incorpora "
-    "componentes estacionales y variables exógenas. En el contexto de IFRS 9, se "
-    "utiliza para proyectar la variación de la cartera de crédito bajo diferentes "
-    "escenarios macroeconómicos (base, adverso y optimista). El modelo descompone "
-    "la serie histórica en componentes autorregresivos (AR), de medias móviles "
-    "(MA), diferenciación integrada (I) y efectos estacionales (S), permitiendo "
-    "capturar la dinámica temporal inherente a los datos. La inclusión de variables "
-    "exógenas (macroeconómicas y administrativas) permite vincular el comportamiento "
-    "de la cartera con el entorno económico, cumpliendo con el requisito de "
-    "forward-looking information establecido en la norma.\n\n"
-    "El motor de modelos SARIMAX implementado sigue un flujo estructurado en bloques:\n\n"
-    "1. PREPARACIÓN DE DATOS: Las variables exógenas se interpolan a frecuencia "
-    "mensual y se calculan variaciones porcentuales (para niveles/índices) o "
-    "diferencias absolutas (para tasas como inflación o desempleo), evitando "
-    "el 'blow-up' del pct_change cuando la serie cruza cero.\n\n"
-    "2. ESTACIONARIEDAD (Bloque 1): Se aplica la prueba Augmented Dickey-Fuller "
-    "(ADF) a cada exógena para encontrar el orden mínimo de diferenciación "
-    "(d) que la vuelve estacionaria. Cada exógena puede tener su propia d.\n\n"
-    "3. ENDÓGENA (Bloque 2): Se evalúan dos transformaciones posibles: "
-    "Original (total): la serie en su escala natural. "
-    "Logit: transformación logit(y) = ln(y/(1-y)), útil cuando la variable "
-    "está acotada entre 0 y 1 (ej. tasas de morosidad). "
-    "Se selecciona la opción que sea estacionaria con d ≤ 1.\n\n"
-    "4. LAGS (Bloque 3): Mediante correlograma cruzado entre la endógena "
-    "diferenciada y cada exógena diferenciada, se sugiere el rezago óptimo "
-    "para cada variable, respetando el signo económico esperado (positivo o "
-    "negativo) configurado por el analista.\n\n"
-    "5. COMBINACIONES (Bloque 5): Se generan todas las combinaciones posibles de: "
-    "subconjuntos de exógenas (máximo N por modelo), un lag por exógena (según Bloque 3), "
-    "y órdenes AR(p) y MA(q) candidatos. Se ajusta un SARIMAX(p,0,q) para cada combinación.\n\n"
-    "6. FILTRADO: Los modelos se filtran por VIF < VIF_MAX (multicolinealidad), "
-    "signos de coeficientes coherentes, sensibilidad entre escenarios, outliers, "
-    "significancia de al menos una exógena (p-value ≤ 0.05), y factor FWL dentro del rango configurado.\n\n"
-    "7. FORECAST (Bloque 6): Se proyecta cada modelo aceptado sobre los tres "
-    "escenarios (BAS/ADV/OPT), se revierte la diferenciación y, si aplica, "
-    "la transformación logit. Se aplica bloqueo de solapamiento para evitar "
-    "que escenarios laterales crucen al base.\n\n"
-    "8. EXPORTACIÓN (Bloque 8): Se exportan los TOP modelos a Excel, una hoja "
-    "por modelo, con trazabilidad completa: endógena, exógenas, FWL, "
-    "residuos, coeficientes y pruebas estadísticas."
-)
-
-# =============================================================================
-# FUNCIONES DE INTERPRETACIÓN DINÁMICA DE DIAGNÓSTICOS
-# =============================================================================
+        plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    finally:
+        plt.close("all")
+    return output_path
 
 def texto_ljungbox(score: str, p: float) -> str:
     if score == "A":
@@ -1075,7 +1074,7 @@ def conclusion_score_global_pdf(s: float) -> str:
 # GENERADOR DE PDF CON REPORTLAB
 # =============================================================================
 
-def generar_pdf_metodologico(doc_data: dict, ruta_imagen: str) -> bytes:
+def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_fwl: str = None) -> bytes:
     """
     Genera el documento metodológico completo en PDF usando reportlab.
     Consume la estructura exacta devuelta por recolectar_datos_documento().
@@ -1209,7 +1208,7 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen: str) -> bytes:
     story = []
 
     # ------------------------------------------------------------------
-    # Extraer datos de doc_data (estructura real de recolectar_datos_documento)
+    # Extraer datos de doc_data
     # ------------------------------------------------------------------
     nombre_modelo = doc_data.get("nombre_modelo", "N/A")
     meta_kpis = doc_data.get("meta_kpis", {})
@@ -1229,7 +1228,6 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen: str) -> bytes:
     observaciones = doc_data.get("observaciones", 0)
     fecha_gen = doc_data.get("fecha_generacion", datetime.now().strftime("%d/%m/%Y %H:%M"))
 
-    # Construir metadata unificada para el PDF
     meta = {
         "pais": meta_kpis.get("pais", "N/A"),
         "cartera": meta_kpis.get("cartera", "N/A"),
@@ -1262,6 +1260,12 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen: str) -> bytes:
     lb = diag_map.get("ljung_box", {})
     jb = diag_map.get("jarque_bera", {})
     ht = diag_map.get("heterocedasticidad", {})
+
+    def fmt_num(v):
+        try:
+            return f"{float(v):.4f}"
+        except:
+            return str(v)
 
     # =====================================================================
     # PORTADA
@@ -1297,10 +1301,169 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen: str) -> bytes:
     story.append(PageBreak())
 
     # =====================================================================
-    # SECCIÓN 1 — METODOLOGÍA SARIMAX
+    # SECCIÓN 0 — RESUMEN DEL MODELO
+    # =====================================================================
+    story.append(Paragraph("Resumen del Modelo", estilo_seccion))
+    story.append(Paragraph(
+        "Esta sección presenta una vista consolidada del modelo seleccionado, incluyendo el factor FWL, "
+        "los diagnósticos estadísticos, los coeficientes estimados y la estructura del modelo.",
+        estilo_cuerpo
+    ))
+    story.append(Spacer(1, 0.1 * inch))
+
+    # 0.1 Factor FWL a 12 meses
+    story.append(Paragraph("Factor FWL a 12 Meses", estilo_subseccion))
+    if ruta_imagen_fwl and os.path.exists(ruta_imagen_fwl):
+        img_fwl = Image(ruta_imagen_fwl, width=6.5 * inch, height=3 * inch)
+        story.append(img_fwl)
+    else:
+        story.append(Paragraph("[Gráfica FWL no disponible]", estilo_nota))
+    story.append(Spacer(1, 0.15 * inch))
+
+    # 0.2 Diagnósticos resumidos
+    story.append(Paragraph("Diagnósticos Estadísticos", estilo_subseccion))
+    diag_resumen = [
+        ["Prueba", "Score", "p-valor", "Estadístico"],
+        ["Ljung-Box", lb.get("score", "N/A"), fmt_num(lb.get("p_value")), fmt_num(lb.get("estadistico"))],
+        ["Jarque-Bera", jb.get("score", "N/A"), fmt_num(jb.get("p_value")), fmt_num(jb.get("estadistico"))],
+        ["Heterocedasticidad", ht.get("score", "N/A"), fmt_num(ht.get("p_value")), fmt_num(ht.get("estadistico"))],
+        ["Score Global Ponderado", "", "", f"{score_global:.2f} / 10"],
+    ]
+    tabla_diag = Table(diag_resumen, colWidths=[2.2 * inch, 1.0 * inch, 1.2 * inch, 1.3 * inch])
+    tabla_diag.setStyle(tabla_estilo_base())
+    story.append(tabla_diag)
+    story.append(Spacer(1, 0.15 * inch))
+
+    # 0.3 Coeficientes del modelo
+    story.append(Paragraph("Coeficientes del Modelo", estilo_subseccion))
+    coef_data = [["Variable", "Coeficiente", "p-value", "Tipo"]]
+    coef_count = 0
+    for row in coeficientes:
+        coef_count += 1
+        pval = row.get("p_value")
+        coef_data.append([
+            str(row.get("variable", "N/A")),
+            f"{float(row.get('coeficiente', 0)):.6f}" if row.get('coeficiente') is not None else "N/A",
+            fmt_num(pval),
+            str(row.get("tipo", "N/A"))
+        ])
+    if coef_count > 0:
+        tabla_coef = Table(coef_data, colWidths=[2.8 * inch, 1.3 * inch, 1.1 * inch, 1.0 * inch])
+        tabla_coef.setStyle(tabla_estilo_base())
+        story.append(tabla_coef)
+    else:
+        story.append(Paragraph("No hay datos de coeficientes.", estilo_cuerpo))
+    story.append(Spacer(1, 0.15 * inch))
+
+    # 0.4 Estructura del modelo
+    story.append(Paragraph("Estructura del Modelo", estilo_subseccion))
+    exo_sig_count = sum(1 for row in coeficientes if row.get("tipo") == "Exogena")
+    struct_data = [
+        ["Componente", "Valor"],
+        ["Términos AR", str(ar_count)],
+        ["Términos MA", str(ma_count)],
+        ["Variables exógenas", str(exo_sig_count)],
+        ["Observaciones", str(observaciones)],
+        ["Score global", f"{score_global:.2f} / 10 — {clasificacion}"],
+    ]
+    tabla_struct = Table(struct_data, colWidths=[2.5 * inch, 3.2 * inch])
+    tabla_struct.setStyle(tabla_estilo_base())
+    story.append(tabla_struct)
+    story.append(PageBreak())
+
+    # =====================================================================
+    # SECCIÓN 1 — METODOLOGÍA SARIMAX (separada por bloques)
     # =====================================================================
     story.append(Paragraph("1. Metodología SARIMAX", estilo_seccion))
-    story.append(Paragraph(TEXTO_METODOLOGIA_SARIMAX, estilo_cuerpo))
+
+    story.append(Paragraph(
+        "El modelo SARIMAX (Seasonal AutoRegressive Integrated Moving Average with eXogenous regressors) "
+        "es una extensión del modelo ARIMA que incorpora componentes estacionales y variables exógenas. "
+        "En el contexto de IFRS 9, se utiliza para proyectar la variación de la cartera de crédito bajo diferentes "
+        "escenarios macroeconómicos (base, adverso y optimista). El modelo descompone la serie histórica en "
+        "componentes autorregresivos (AR), de medias móviles (MA), diferenciación integrada (I) y efectos "
+        "estacionales (S), permitiendo capturar la dinámica temporal inherente a los datos. La inclusión de "
+        "variables exógenas (macroeconómicas y administrativas) permite vincular el comportamiento de la "
+        "cartera con el entorno económico, cumpliendo con el requisito de forward-looking information establecido "
+        "en la norma.",
+        estilo_cuerpo
+    ))
+    story.append(Spacer(1, 0.1 * inch))
+
+    story.append(Paragraph("1.1 Preparación de Datos", estilo_subseccion))
+    story.append(Paragraph(
+        "Las variables exógenas se interpolan a frecuencia mensual y se calculan variaciones porcentuales "
+        "(para niveles/índices) o diferencias absolutas (para tasas como inflación o desempleo), evitando "
+        "el 'blow-up' del pct_change cuando la serie cruza cero. Este paso garantiza que todas las variables "
+        "tengan la misma frecuencia temporal y estén expresadas en términos de cambio, facilitando la "
+        "comparabilidad entre modelos.",
+        estilo_cuerpo
+    ))
+
+    story.append(Paragraph("1.2 Estacionariedad (Bloque 1)", estilo_subseccion))
+    story.append(Paragraph(
+        "Se aplica la prueba Augmented Dickey-Fuller (ADF) a cada exógena para encontrar el orden mínimo "
+        "de diferenciación (d) que la vuelve estacionaria. Cada exógena puede tener su propia d, lo que "
+        "permite flexibilidad en el tratamiento de variables con diferentes propiedades de persistencia. "
+        "Una serie estacionaria tiene media y varianza constantes en el tiempo, propiedad fundamental para "
+        "la validez de las inferencias del modelo.",
+        estilo_cuerpo
+    ))
+
+    story.append(Paragraph("1.3 Endógena (Bloque 2)", estilo_subseccion))
+    story.append(Paragraph(
+        "Se evalúan dos transformaciones posibles para la variable dependiente: (a) Original (total): la serie "
+        "en su escala natural, útil cuando la variable no está acotada; y (b) Logit: transformación logit(y) = ln(y/(1-y)), "
+        "aplicable cuando la variable está acotada entre 0 y 1 (ej. tasas de morosidad). La transformación logit evita "
+        "proyecciones fuera del rango lógico. Se selecciona la opción que sea estacionaria con d ≤ 1, priorizando "
+        "la parsimonia del modelo.",
+        estilo_cuerpo
+    ))
+
+    story.append(Paragraph("1.4 Lags (Bloque 3)", estilo_subseccion))
+    story.append(Paragraph(
+        "Mediante correlograma cruzado entre la endógena diferenciada y cada exógena diferenciada, se sugiere "
+        "el rezago óptimo para cada variable. Este proceso respeta el signo económico esperado (positivo o negativo) "
+        "configurado por el analista, garantizando que la relación entre la cartera y cada macro sea teóricamente "
+        "coherente. La selección de lags evita la multicolinealidad excesiva y mejora la interpretabilidad.",
+        estilo_cuerpo
+    ))
+
+    story.append(Paragraph("1.5 Combinaciones (Bloque 5)", estilo_subseccion))
+    story.append(Paragraph(
+        "Se generan todas las combinaciones posibles de: subconjuntos de exógenas (máximo N por modelo), "
+        "un lag por exógena (según Bloque 3), y órdenes AR(p) y MA(q) candidatos. Se ajusta un SARIMAX(p,0,q) "
+        "para cada combinación. Este enfoque de fuerza bruta controlada garantiza explorar el espacio de modelos "
+        "sin omitir especificaciones potencialmente óptimas.",
+        estilo_cuerpo
+    ))
+
+    story.append(Paragraph("1.6 Filtrado", estilo_subseccion))
+    story.append(Paragraph(
+        "Los modelos se filtran por múltiples criterios simultáneos: VIF < VIF_MAX para controlar multicolinealidad; "
+        "signos de coeficientes coherentes con la teoría económica; sensibilidad entre escenarios (diferencia mínima "
+        "entre medias de optimista y adverso); detección de outliers (forecast dentro de media_hist ± K·std_hist); "
+        "significancia de al menos una exógena (p-value ≤ 0.05); y factor FWL dentro del rango configurado [min, max]. "
+        "Estos filtros garantizan que solo modelos robustos y económicamente interpretables avancen.",
+        estilo_cuerpo
+    ))
+
+    story.append(Paragraph("1.7 Forecast (Bloque 6)", estilo_subseccion))
+    story.append(Paragraph(
+        "Se proyecta cada modelo aceptado sobre los tres escenarios (BAS/ADV/OPT), se revierte la diferenciación "
+        "y, si aplica, la transformación logit. Se aplica bloqueo de solapamiento para evitar que escenarios laterales "
+        "cruzen al base, garantizando el orden económico Adverso ≤ Base ≤ Optimista (o viceversa según la variable). "
+        "Este paso asegura proyecciones internamente consistentes.",
+        estilo_cuerpo
+    ))
+
+    story.append(Paragraph("1.8 Exportación (Bloque 8)", estilo_subseccion))
+    story.append(Paragraph(
+        "Se exportan los TOP modelos a Excel, una hoja por modelo, con trazabilidad completa: endógena, exógenas, "
+        "factor FWL, residuos, coeficientes y pruebas estadísticas. Esta documentación es esencial para la validación "
+        "de modelos de riesgo y cumplimiento normativo bajo IFRS 9.",
+        estilo_cuerpo
+    ))
     story.append(PageBreak())
 
     # =====================================================================
@@ -1331,7 +1494,6 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen: str) -> bytes:
     story.append(tabla_cfg)
     story.append(Spacer(1, 0.2 * inch))
 
-    # Glosarios
     story.append(Paragraph("2.1 Factor FWL (Forward-Looking)", estilo_subseccion))
     fwl_min = meta.get("fwl_min", "N/A")
     fwl_max = meta.get("fwl_max", "N/A")
@@ -1410,12 +1572,6 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen: str) -> bytes:
     # =====================================================================
     story.append(Paragraph("3. Variables Utilizadas", estilo_seccion))
 
-    # Construir diccionario de coeficientes por nombre de variable
-    coefs_por_nombre = {}
-    for row in coeficientes:
-        var_name = str(row.get("variable", "")).strip()
-        coefs_por_nombre[var_name] = row
-
     exo_data = [["Variable exógena", "Coeficiente", "p-value", "Significancia"]]
     exo_count = 0
     for row in coeficientes:
@@ -1430,7 +1586,7 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen: str) -> bytes:
             exo_data.append([
                 str(row.get("variable", "N/A")),
                 f"{float(coef_val):.6f}" if coef_val is not None else "N/A",
-                f"{float(pval):.4f}" if pval is not None else "N/A",
+                fmt_num(pval),
                 sig
             ])
 
@@ -1456,15 +1612,16 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen: str) -> bytes:
     # =====================================================================
     story.append(Paragraph("4. Gráfica de Variables Exógenas", estilo_seccion))
     story.append(Paragraph(
-        "La siguiente figura muestra la evolución histórica y proyectada de las variables exógenas "
-        "incluidas en el modelo, bajo los tres escenarios macroeconómicos (Base, Adverso y Optimista). "
-        "La línea vertical indica el punto de corte entre el período histórico y el de proyección.",
+        "La siguiente figura muestra la evolución histórica y proyectada de cada variable exógena "
+        "incluida en el modelo, bajo los tres escenarios macroeconómicos (Base, Adverso y Optimista). "
+        "Cada panel corresponde a una variable exógena diferente. La línea vertical indica el punto de corte "
+        "entre el período histórico y el de proyección.",
         estilo_cuerpo
     ))
     story.append(Spacer(1, 0.15 * inch))
 
-    if ruta_imagen and os.path.exists(ruta_imagen):
-        img = Image(ruta_imagen, width=6.5 * inch, height=4 * inch)
+    if ruta_imagen_exog and os.path.exists(ruta_imagen_exog):
+        img = Image(ruta_imagen_exog, width=6.5 * inch, height=4.5 * inch)
         story.append(img)
     else:
         story.append(Paragraph("[Gráfica no disponible]", estilo_nota))
@@ -1482,12 +1639,6 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen: str) -> bytes:
         estilo_cuerpo
     ))
     story.append(Spacer(1, 0.1 * inch))
-
-    def fmt_num(v):
-        try:
-            return f"{float(v):.4f}"
-        except:
-            return str(v)
 
     # Ljung-Box
     lb_score = lb.get("score", "N/A")
@@ -1536,7 +1687,6 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen: str) -> bytes:
     story.append(tabla_resumen)
     story.append(Spacer(1, 0.2 * inch))
 
-    # Normalizar clasificación para color
     clas_norm = str(clasificacion).upper()
     if clas_norm == "BUENO":
         color_clas = VERDE_CORP
@@ -1570,7 +1720,6 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen: str) -> bytes:
     pdf_bytes = buffer.getvalue()
     buffer.close()
     return pdf_bytes
-
 def generar_excel_metodologico(doc_data, ruta_imagen):
     wb = openpyxl.Workbook()
     ws_meta = wb.active
@@ -1647,34 +1796,51 @@ def generar_y_guardar_documentos(nombre_modelo):
         st.error(f"Error recolectando datos: {e}")
         return False
 
-    ruta_tmp = None
+    ruta_tmp_exog = None
+    ruta_tmp_fwl = None
     try:
-        tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-        ruta_tmp = tmp.name
-        tmp.close()
-        graficar_macros_estatico(doc_data, ruta_tmp)
+        tmp_exog = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+        ruta_tmp_exog = tmp_exog.name
+        tmp_exog.close()
+        graficar_macros_estatico(doc_data, ruta_tmp_exog)
     except Exception as e:
-        st.warning(f"Gráfica no generada: {e}")
-        ruta_tmp = None
+        st.warning(f"Gráfica de exógenas no generada: {e}")
+        ruta_tmp_exog = None
 
     try:
-        pdf_bytes = generar_pdf_metodologico(doc_data, ruta_tmp)
+        tmp_fwl = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+        ruta_tmp_fwl = tmp_fwl.name
+        tmp_fwl.close()
+        graficar_fwl_estatico(doc_data, ruta_tmp_fwl)
+    except Exception as e:
+        st.warning(f"Gráfica de FWL no generada: {e}")
+        ruta_tmp_fwl = None
+
+    try:
+        pdf_bytes = generar_pdf_metodologico(doc_data, ruta_tmp_exog, ruta_tmp_fwl)
     except Exception as e:
         st.error(f"Error generando PDF: {e}")
-        if ruta_tmp and os.path.exists(ruta_tmp):
-            os.remove(ruta_tmp)
+        st.exception(e)
+        if ruta_tmp_exog and os.path.exists(ruta_tmp_exog):
+            os.remove(ruta_tmp_exog)
+        if ruta_tmp_fwl and os.path.exists(ruta_tmp_fwl):
+            os.remove(ruta_tmp_fwl)
         return False
 
     try:
-        excel_bytes = generar_excel_metodologico(doc_data, ruta_tmp)
+        excel_bytes = generar_excel_metodologico(doc_data, ruta_tmp_exog)
     except Exception as e:
         st.error(f"Error generando Excel: {e}")
-        if ruta_tmp and os.path.exists(ruta_tmp):
-            os.remove(ruta_tmp)
+        if ruta_tmp_exog and os.path.exists(ruta_tmp_exog):
+            os.remove(ruta_tmp_exog)
+        if ruta_tmp_fwl and os.path.exists(ruta_tmp_fwl):
+            os.remove(ruta_tmp_fwl)
         return False
 
-    if ruta_tmp and os.path.exists(ruta_tmp):
-        os.remove(ruta_tmp)
+    if ruta_tmp_exog and os.path.exists(ruta_tmp_exog):
+        os.remove(ruta_tmp_exog)
+    if ruta_tmp_fwl and os.path.exists(ruta_tmp_fwl):
+        os.remove(ruta_tmp_fwl)
 
     nombre_archivo = _normalizar_nombre_archivo(nombre_modelo)
     st.session_state.modelo_final = nombre_modelo
@@ -1685,9 +1851,6 @@ def generar_y_guardar_documentos(nombre_modelo):
     st.session_state.documento_metodologico_data = doc_data
     return True
 
-# =============================================================================
-# PLOTS
-# =============================================================================
 def aplicar_tema_plotly(fig):
     fig.update_layout(
         font=dict(family="Inter, Arial, sans-serif", size=12, color=TEXT),
@@ -2802,7 +2965,7 @@ with tab_dash:
                 st.markdown(
                     f'<div style="display:inline-block;background:#fff4d6;color:{NAVY};'
                     f'border:1px solid #f0d58a;border-radius:6px;padding:6px 10px;'
-                    f'font-size:12px;font-weight:700;margin:0 0 10px;"> MODELO FINAL SELECCIONADO</div>',
+                    f'font-size:12px;font-weight:700;margin:0 0 10px;">🎯 MODELO FINAL SELECCIONADO</div>',
                     unsafe_allow_html=True
                 )
             elif st.session_state.get("modelo_final"):
@@ -2825,7 +2988,7 @@ with tab_dash:
             with hcol3:
                 boton_favorito(st.session_state.modelo_seleccionado, key_suffix="detalle")
             with hcol4:
-                if st.button(" Marcar como modelo final", key="btn_modelo_final_top", use_container_width=True):
+                if st.button("🎯 Marcar como modelo final", key="btn_modelo_final_top", use_container_width=True):
                     with st.spinner("Generando documento metodológico..."):
                         ok = generar_y_guardar_documentos(st.session_state.modelo_seleccionado)
                     if ok:
@@ -3031,7 +3194,7 @@ with tab_dash:
             st.markdown(divider(), unsafe_allow_html=True)
             cfinal1, cfinal2, cfinal3 = st.columns([1.3, 1, 1])
             with cfinal1:
-                if st.button(" Marcar como modelo final", key="btn_modelo_final_bottom", use_container_width=True):
+                if st.button("🎯 Marcar como modelo final", key="btn_modelo_final_bottom", use_container_width=True):
                     with st.spinner("Generando documento metodológico..."):
                         ok = generar_y_guardar_documentos(st.session_state.modelo_seleccionado)
                     if ok:
