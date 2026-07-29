@@ -1415,11 +1415,29 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen: str) -> bytes:
     exogenas = doc_data.get("exogenas", [])
     if exogenas:
         exo_data = [["Variable exógena", "Coeficiente", "p-value", "Significancia"]]
-        for nombre, coef, pval, sig in exogenas:
+        for row in exogenas:
+            if isinstance(row, dict):
+                nombre = row.get("exogena")
+                coef = row.get("coeficiente")
+                pval = row.get("p_value")
+                estado = str(row.get("estado", "")).lower()
+                sig = estado in ("significativa", "marginal")
+            elif isinstance(row, (list, tuple)):
+                if len(row) >= 4:
+                    nombre, coef, pval, sig = row[:4]
+                elif len(row) == 3:
+                    nombre, pval, estado = row
+                    coef = "N/A"
+                    sig = str(estado).lower() in ("significativa", "marginal")
+                else:
+                    continue
+            else:
+                continue
+
             exo_data.append([
                 str(nombre),
-                f"{coef:.6f}" if isinstance(coef, (int, float)) else str(coef),
-                f"{pval:.4f}" if isinstance(pval, (int, float)) else str(pval),
+                f"{coef:.6f}" if isinstance(coef, (int, float)) else str(coef if coef is not None else "N/A"),
+                f"{pval:.4f}" if isinstance(pval, (int, float)) else str(pval if pval is not None else "N/A"),
                 "Sí" if sig else "No"
             ])
         tabla_exo = Table(exo_data, colWidths=[2.4 * inch, 1.3 * inch, 1.1 * inch, 1.1 * inch])
