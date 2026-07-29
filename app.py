@@ -1480,83 +1480,125 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
         "estacionales (S), permitiendo capturar la dinámica temporal inherente a los datos. La inclusión de "
         "variables exógenas (macroeconómicas y administrativas) permite vincular el comportamiento de la "
         "cartera con el entorno económico, cumpliendo con el requisito de forward-looking information establecido "
-        "en la norma.",
+        "en la norma. El flujo se organiza en nueve bloques secuenciales, desde la carga de datos hasta la exportación "
+        "de resultados.",
         estilo_cuerpo
     ))
     story.append(Spacer(1, 0.1 * inch))
 
-    story.append(Paragraph("1.1 Preparación de Datos", estilo_subseccion))
+    story.append(Paragraph("1.1 Identificación de Variables", estilo_subseccion))
     story.append(Paragraph(
-        "Las variables exógenas se interpolan a frecuencia mensual y se calculan variaciones porcentuales "
-        "(para niveles/índices) o diferencias absolutas (para tasas como inflación o desempleo), evitando "
-        "el 'blow-up' del pct_change cuando la serie cruza cero. Este paso garantiza que todas las variables "
-        "tengan la misma frecuencia temporal y estén expresadas en términos de cambio, facilitando la "
-        "comparabilidad entre modelos.",
+        "El proceso inicia con la carga de cuatro archivos base: (1) ENDÓGENA, que contiene la fecha, la variable "
+        "dependiente y las n exógenas históricas; (2) EXO_BAS, con las proyecciones base de las exógenas; "
+        "(3) EXO_ADV, con las proyecciones adversas; y (4) EXO_OPT, con las proyecciones optimistas. "
+        "El motor detecta automáticamente la columna de fecha, el orden temporal (mensual, trimestral o anual), "
+        "el nombre de la endógena (segunda columna) y las exógenas (desde la tercera columna en adelante). "
+        "Se valida que los escenarios mantengan el mismo orden de variables que el histórico y que la proyección "
+        "sea una continuación inmediata del histórico (sin huecos temporales).",
         estilo_cuerpo
     ))
 
-    story.append(Paragraph("1.2 Estacionariedad (Bloque 1)", estilo_subseccion))
+    story.append(Paragraph("1.2 Bloque 1 — Exógenas: Estacionariedad y Diferenciación", estilo_subseccion))
     story.append(Paragraph(
         "Se aplica la prueba Augmented Dickey-Fuller (ADF) a cada exógena para encontrar el orden mínimo "
         "de diferenciación (d) que la vuelve estacionaria. Cada exógena puede tener su propia d, lo que "
         "permite flexibilidad en el tratamiento de variables con diferentes propiedades de persistencia. "
         "Una serie estacionaria tiene media y varianza constantes en el tiempo, propiedad fundamental para "
-        "la validez de las inferencias del modelo.",
+        "la validez de las inferencias del modelo. El resultado de este bloque es un vector dinámico de exógenas "
+        "ya diferenciadas (var_exogenas_diff) y un diccionario con la d aplicada por variable (var_exogenas_d), "
+        "necesario para revertir la diferenciación en el forecast.",
         estilo_cuerpo
     ))
 
-    story.append(Paragraph("1.3 Endógena (Bloque 2)", estilo_subseccion))
+    story.append(Paragraph("1.3 Bloque 2 — Endógena: Tipo y Diferenciación", estilo_subseccion))
     story.append(Paragraph(
         "Se evalúan dos transformaciones posibles para la variable dependiente: (a) Original (total): la serie "
         "en su escala natural, útil cuando la variable no está acotada; y (b) Logit: transformación logit(y) = ln(y/(1-y)), "
         "aplicable cuando la variable está acotada entre 0 y 1 (ej. tasas de morosidad). La transformación logit evita "
-        "proyecciones fuera del rango lógico. Se selecciona la opción que sea estacionaria con d ≤ 1, priorizando "
-        "la parsimonia del modelo.",
+        "proyecciones fuera del rango lógico. Para cada opción se ejecuta la prueba ADF y se selecciona la que sea "
+        "estacionaria con d ≤ 1, priorizando la parsimonia del modelo. El resultado es la endógena final ya "
+        "diferenciada (var_endogena_diff), junto con los órdenes AR(p) y MA(q) candidatos (VALORES_P y VALORES_Q) "
+        "que alimentarán el motor de combinaciones.",
         estilo_cuerpo
     ))
 
-    story.append(Paragraph("1.4 Lags (Bloque 3)", estilo_subseccion))
+    story.append(Paragraph("1.4 Bloque 3 — Lags: Correlograma Cruzado", estilo_subseccion))
     story.append(Paragraph(
         "Mediante correlograma cruzado entre la endógena diferenciada y cada exógena diferenciada, se sugiere "
         "el rezago óptimo para cada variable. Este proceso respeta el signo económico esperado (positivo o negativo) "
-        "configurado por el analista, garantizando que la relación entre la cartera y cada macro sea teóricamente "
-        "coherente. La selección de lags evita la multicolinealidad excesiva y mejora la interpretabilidad.",
+        "configurado por el analista en la lista SIGNOS_EXOGENAS, garantizando que la relación entre la cartera y "
+        "cada macro sea teóricamente coherente. El flujo contempla tres escenarios: (1) si hay lags significativos que "
+        "siguen el signo esperado, se toman los N más significativos; (2) si ninguno es significativo pero siguen el signo, "
+        "se toma el más cercano; (3) si no sigue el signo, se toma un solo lag, el más significativo. El resultado es un "
+        "diccionario {exógena: [lags]} (lags_por_exogena) que alimenta el Bloque 5.",
         estilo_cuerpo
     ))
 
-    story.append(Paragraph("1.5 Combinaciones (Bloque 5)", estilo_subseccion))
+    story.append(Paragraph("1.5 Bloque 4 — Dummies: Variables Opcionales", estilo_subseccion))
     story.append(Paragraph(
-        "Se generan todas las combinaciones posibles de: subconjuntos de exógenas (máximo N por modelo), "
-        "un lag por exógena (según Bloque 3), y órdenes AR(p) y MA(q) candidatos. Se ajusta un SARIMAX(p,0,q) "
-        "para cada combinación. Este enfoque de fuerza bruta controlada garantiza explorar el espacio de modelos "
-        "sin omitir especificaciones potencialmente óptimas.",
+        "Este bloque es opcional y permite generar variables dummy (vectores de 0 y 1) a partir de un rango de "
+        "fechas (inicio y fin). Cada dummy vale 1 dentro del período definido y 0 fuera de él. Estas variables se "
+        "construyen sobre el índice completo (histórico + proyección) para que sirvan tanto al ajuste como al forecast. "
+        "Si no se definen dummies, el Bloque 5 entiende que no aplican y no las incluye en las combinaciones. "
+        "Ejemplos típicos incluyen eventos excepcionales como la pandemia COVID-19 o crisis financieras.",
         estilo_cuerpo
     ))
 
-    story.append(Paragraph("1.6 Filtrado", estilo_subseccion))
+    story.append(Paragraph("1.6 Bloque 5 — Combinaciones: Motor SARIMAX y Filtrado", estilo_subseccion))
     story.append(Paragraph(
-        "Los modelos se filtran por múltiples criterios simultáneos: VIF < VIF_MAX para controlar multicolinealidad; "
-        "signos de coeficientes coherentes con la teoría económica; sensibilidad entre escenarios (diferencia mínima "
-        "entre medias de optimista y adverso); detección de outliers (forecast dentro de media_hist ± K·std_hist); "
-        "significancia de al menos una exógena (p-value ≤ 0.05); y factor FWL dentro del rango configurado [min, max]. "
-        "Estos filtros garantizan que solo modelos robustos y económicamente interpretables avancen.",
+        "El motor central genera todas las combinaciones posibles de modelos SARIMAX guiadas por los bloques "
+        "anteriores. Las reglas de combinación son: subconjuntos de exógenas (máximo N por modelo, definido por "
+        "MAX_EXOG_POR_MODELO); cada exógena entra con un solo lag (exclusivo, según Bloque 3); órdenes AR(p) "
+        "y MA(q) candidatos (Bloque 2); y con/sin dummy (Bloque 4). Para cada especificación se ajusta un SARIMAX(p,0,q) "
+        "sobre el histórico recortado a la ventana definida. Los modelos se filtran por: (a) VIF < VIF_MAX para controlar "
+        "multicolinealidad; (b) signos de coeficientes coherentes con la teoría económica (estricto); (c) modelos con p=0 "
+        "se marcan para revisión pero no se descartan automáticamente. El resultado es una lista de modelos aceptados "
+        "(modelos_aceptados) ordenados por AIC.",
         estilo_cuerpo
     ))
 
-    story.append(Paragraph("1.7 Forecast (Bloque 6)", estilo_subseccion))
+    story.append(Paragraph("1.7 Bloque 6 — Forecast: Proyección de Modelos Aceptados", estilo_subseccion))
     story.append(Paragraph(
-        "Se proyecta cada modelo aceptado sobre los tres escenarios (BAS/ADV/OPT), se revierte la diferenciación "
-        "y, si aplica, la transformación logit. Se aplica bloqueo de solapamiento para evitar que escenarios laterales "
-        "cruzen al base, garantizando el orden económico Adverso ≤ Base ≤ Optimista (o viceversa según la variable). "
-        "Este paso asegura proyecciones internamente consistentes.",
+        "Se proyecta cada modelo aceptado sobre los tres escenarios (BAS/ADV/OPT). La transformación consistente "
+        "de las exógenas es clave: para cada exógena se diferencia la serie [histórico + proyección] con su misma d "
+        "(Bloque 1) y se aplica el mismo lag del modelo, de modo que la primera proyección enlaza con el último histórico. "
+        "Luego se revierte la diferenciación de la endógena (integración) y, si aplica, la transformación logit (inversa: "
+        "y = 1/(1+exp(-x))). Se aplica bloqueo de solapamiento para evitar que escenarios laterales (ADV/OPT) crucen al "
+        "base, garantizando el orden económico Adverso ≤ Base ≤ Optimista (o viceversa según la variable). El resultado "
+        "es un diccionario {id_modelo: DataFrame[BAS, ADV, OPT]} en la escala original de la endógena.",
         estilo_cuerpo
     ))
 
-    story.append(Paragraph("1.8 Exportación (Bloque 8)", estilo_subseccion))
+    story.append(Paragraph("1.8 Bloque 7 — Ordenamiento: Sensibilidad y Filtrado Final", estilo_subseccion))
     story.append(Paragraph(
-        "Se exportan los TOP modelos a Excel, una hoja por modelo, con trazabilidad completa: endógena, exógenas, "
-        "factor FWL, residuos, coeficientes y pruebas estadísticas. Esta documentación es esencial para la validación "
-        "de modelos de riesgo y cumplimiento normativo bajo IFRS 9.",
+        "Se descartan los modelos de baja sensibilidad: aquellos cuyas proyecciones de optimista y adverso se parecen "
+        "demasiado (no diferencian los escenarios). La métrica es |media(OPT) − media(ADV)| sobre el horizonte de "
+        "proyección. Se aplican cuatro filtros adicionales: (1) sensibilidad ≥ UMBRAL_SENSIBILIDAD; (2) sin outliers: "
+        "todo el forecast dentro de media_hist ± K·std_hist; (3) significancia: al menos una exógena con p-value ≤ 0.05; "
+        "(4) factor FWL: todos los factores (forecast / última PD observada) dentro del rango [FWL_FACTOR_MIN, FWL_FACTOR_MAX]. "
+        "Los modelos que pasan todos los filtros se ordenan de mayor a menor sensibilidad y constituyen la variable final "
+        "modelos_finales, insumo del Bloque 8.",
+        estilo_cuerpo
+    ))
+
+    story.append(Paragraph("1.9 Bloque 8 — Exportación: Excel de Modelos Finales", estilo_subseccion))
+    story.append(Paragraph(
+        "Se exportan los primeros TOP_EXPORTAR modelos de modelos_finales a un archivo .xlsx, una hoja por modelo. "
+        "Cada hoja replica la estructura de trazabilidad completa: endógena (histórico + forecast de los 3 escenarios); "
+        "exógenas del modelo (nivel histórico común + 3 escenarios); FWL a 12 meses (factor nivel / último histórico); "
+        "Factor FWL por Año (resumen de diciembre de cada año); residuos individuales y resumen de distribución; "
+        "coeficientes del modelo (con p-values); y pruebas estadísticas (Ljung-Box, Jarque-Bera, ARCH). Además, se "
+        "embebe metadata de trazabilidad en las propiedades del workbook (país, cartera, parámetros del motor, etc.).",
+        estilo_cuerpo
+    ))
+
+    story.append(Paragraph("1.10 Bloque 9 — Reporte CSV: Factores de Impacto", estilo_subseccion))
+    story.append(Paragraph(
+        "Este bloque genera un reporte .csv de factores de impacto (forecast / última PD observada) para un único "
+        "modelo elegido por su id, en los escenarios BAS, ADV, OPT y ORI (constante = 1). El factor se extiende de forma "
+        "plana hasta una fecha de corte configurable (por defecto 2100-12-01). Previamente, una celda auxiliar (B9.1) "
+        "evalúa los modelos exportados y muestra un top de candidatos cuyos factores FWL estén dentro o más cerca "
+        "del rango objetivo [FWL_RANGO_MIN, FWL_RANGO_MAX], facilitando la selección del modelo a reportar.",
         estilo_cuerpo
     ))
     story.append(PageBreak())
@@ -1782,6 +1824,39 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
     # SECCIÓN 6 — SCORE GLOBAL Y CONCLUSIÓN
     # =====================================================================
     story.append(Paragraph("6. Score Global y Conclusión", estilo_seccion))
+
+    story.append(Paragraph(
+        "El score global es una métrica ponderada que resume la calidad diagnóstica del modelo en una "
+        "escala de 0 a 10. Se construye a partir de los scores individuales (A, B, C, D) de las tres pruebas "
+        "estadísticas aplicadas a los residuos, siguiendo los siguientes pasos:",
+        estilo_cuerpo
+    ))
+    story.append(Paragraph(
+        "<b>Paso 1 — Score individual por prueba:</b> Cada prueba recibe una letra según su p-valor. "
+        "Para Ljung-Box y Heterocedasticidad: A (p > 0.10), B (0.05 < p ≤ 0.10), C (0.01 < p ≤ 0.05), D (p ≤ 0.01). "
+        "Para Jarque-Bera se aplican los mismos umbrales. A indica cumplimiento óptimo, D indica incumplimiento significativo.",
+        estilo_cuerpo
+    ))
+    story.append(Paragraph(
+        "<b>Paso 2 — Conversión numérica:</b> Cada letra se convierte a un valor numérico: A = 10.0, B = 7.5, C = 5.0, D = 2.5. "
+        "Esta escala refleja que un score C ya representa una señal de alerta que requiere monitoreo, mientras que D indica "
+        "un problema estadístico que compromete la validez del modelo.",
+        estilo_cuerpo
+    ))
+    story.append(Paragraph(
+        "<b>Paso 3 — Ponderación:</b> Los tres scores numéricos se combinan con pesos que reflejan la importancia relativa "
+        "de cada diagnóstico para la robustez del modelo SARIMAX: Ljung-Box (autocorrelación de residuos) pesa 40%; "
+        "Jarque-Bera (normalidad de residuos) pesa 30%; y Heterocedasticidad (varianza constante) pesa 30%. "
+        "La fórmula es: <i>Score Global = 0.40 × Score_Ljung + 0.30 × Score_Jarque + 0.30 × Score_Hetero</i>.",
+        estilo_cuerpo
+    ))
+    story.append(Paragraph(
+        "<b>Paso 4 — Clasificación:</b> El resultado final se interpreta así: ≥ 7.0 = BUENO (modelo robusto para uso oficial); "
+        "5.0 – 6.9 = REGULAR (utilizable con seguimiento); < 5.0 = DEFICIENTE (requiere reespecificación antes de uso oficial). "
+        "Esta clasificación permite al equipo de modelos de riesgo tomar decisiones informadas sobre la selección final.",
+        estilo_cuerpo
+    ))
+    story.append(Spacer(1, 0.1 * inch))
 
     resumen_data = [
         ["Prueba", "Score", "p-valor", "Estadístico"],
