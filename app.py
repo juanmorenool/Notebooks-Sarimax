@@ -713,20 +713,21 @@ def render_leyenda_scores():
 # =============================================================================
 # METADATA
 # =============================================================================
-def extraer_kpis_meta(meta):
-    if not meta:
+def extraer_kpis_meta(meta, fallback_meta=None):
+    src = meta if meta else fallback_meta
+    if not src:
         return {}
     return {
-        'pais': PAISES_MAP.get(str(meta.get('pais', '')).lower().strip(), meta.get('pais', 'N/A')),
-        'cartera': CARTERAS_MAP.get(str(meta.get('cartera', '')).lower().strip(), meta.get('cartera', 'N/A')),
-        'tipo_endogena': meta.get('motor_tipo_endogena', 'N/A'),
-        'modo_endogena': meta.get('generador_modo_endogena', 'N/A'),
-        'ventana_mm': meta.get('generador_ventana_mm', 'N/A'),
-        'vif_max': meta.get('motor_vif_max', 'N/A'),
-        'fwl_min': meta.get('motor_fwl_factor_min', '?'),
-        'fwl_max': meta.get('motor_fwl_factor_max', '?'),
-        'max_exog': meta.get('motor_max_exog_por_modelo', 'N/A'),
-        'top_exportar': meta.get('motor_top_exportar', 'N/A'),
+        'pais': PAISES_MAP.get(str(src.get('pais', '')).lower().strip(), src.get('pais', 'N/A')),
+        'cartera': CARTERAS_MAP.get(str(src.get('cartera', '')).lower().strip(), src.get('cartera', 'N/A')),
+        'tipo_endogena': src.get('motor_tipo_endogena', 'N/A'),
+        'modo_endogena': src.get('generador_modo_endogena', 'N/A'),
+        'ventana_mm': src.get('generador_ventana_mm', 'N/A'),
+        'vif_max': src.get('motor_vif_max', 'N/A'),
+        'fwl_min': src.get('motor_fwl_factor_min', '?'),
+        'fwl_max': src.get('motor_fwl_factor_max', '?'),
+        'max_exog': src.get('motor_max_exog_por_modelo', 'N/A'),
+        'top_exportar': src.get('motor_top_exportar', 'N/A'),
     }
 
 # =============================================================================
@@ -762,7 +763,7 @@ def recolectar_datos_documento(nombre_modelo, modelos_data, meta_contexto):
     score_global_txt, score_global_conclusion = clasificar_score_global(score_global_num)
     significancia = obtener_significancia_exogenas(coeficientes, exogenas)
     ar_count, ma_count = contar_ar_ma(coeficientes)
-    meta_kpis = extraer_kpis_meta(meta_contexto)
+    meta_kpis = extraer_kpis_meta(meta_contexto, st.session_state.get("meta_contexto_manual", {}))
 
     diag_rows = []
     if pruebas is not None and not pruebas.empty:
@@ -2701,6 +2702,7 @@ for key, default in [
     ("sec_contexto", _prefs_guardadas.get("sec_contexto", True)),
     ("sec_orden", _prefs_guardadas.get("sec_orden", True)),
     ("sec_exogenas", _prefs_guardadas.get("sec_exogenas", True)),
+    ("meta_contexto_manual", {}),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -2815,6 +2817,9 @@ with tab_dash:
                 with st.spinner("Parseando modelos..."):
                     st.session_state.modelos_data = parsear_excel(uploaded)
                     st.session_state.meta_contexto = leer_meta_embebida(uploaded)
+                    # Si el nuevo archivo tiene metadata embebida, limpiar fallback manual
+                    if st.session_state.meta_contexto is not None:
+                        st.session_state.meta_contexto_manual = {}
                     st.session_state.last_file_name = uploaded.name
                     st.session_state.vista_resumen = True
                     st.session_state.comparar_sel = []
@@ -2847,9 +2852,50 @@ with tab_dash:
         if st.session_state.modelos_data:
             st.markdown(divider(), unsafe_allow_html=True)
             meta = st.session_state.meta_contexto
+            meta_fallback = st.session_state.get("meta_contexto_manual", {})
+            meta_display = meta if meta else meta_fallback
+
+            # Formulario manual de metadata (solo si no hay metadata embebida)
+            if not meta:
+                with st.expander("Completar metadata manualmente", expanded=not bool(meta_fallback)):
+                    _pais = st.selectbox("País", ["Colombia", "Panama", "Costa Rica"], key="manual_pais")
+                    _cartera = st.text_input("Cartera", key="manual_cartera")
+                    _tipo_endogena = st.selectbox("Tipo de endógena", ["total", "logit"], key="manual_tipo")
+                    _modo_endogena = st.selectbox("Modo de endógena", ["actual", "media_movil"], key="manual_modo")
+                    _ventana_mm = st.number_input("Ventana media móvil (meses)", 1, 12, 3, key="manual_ventana")
+                    _vif_max = st.number_input("VIF máximo", 1.0, 20.0, 10.0, key="manual_vif")
+                    _fwl_min = st.number_input("FWL mínimo", 0.0, 2.0, 1.0, key="manual_fwl_min")
+                    _fwl_max = st.number_input("FWL máximo", 0.0, 2.0, 1.2, key="manual_fwl_max")
+                    _valores_p = st.text_input("Órdenes AR candidatos", value="[0,1,2,3]", key="manual_p")
+                    _valores_q = st.text_input("Órdenes MA candidatos", value="[0,1,2,3]", key="manual_q")
+                    _max_lags = st.number_input("Máximo lags", 1, 12, 8, key="manual_lags")
+                    _umbral_sens = st.number_input("Umbral sensibilidad", 0.0, 1.0, 0.00005, format="%.5f", key="manual_sens")
+                    _trend = st.text_input("Trend del modelo", value="c", key="manual_trend")
+
+                    if st.button("Aplicar metadata", use_container_width=True, key="btn_aplicar_manual"):
+                        st.session_state.meta_contexto_manual = {
+                            "pais": _pais,
+                            "cartera": _cartera,
+                            "motor_tipo_endogena": _tipo_endogena,
+                            "generador_modo_endogena": _modo_endogena,
+                            "generador_ventana_mm": _ventana_mm,
+                            "motor_vif_max": _vif_max,
+                            "motor_fwl_factor_min": _fwl_min,
+                            "motor_fwl_factor_max": _fwl_max,
+                            "motor_valores_p": _valores_p,
+                            "motor_valores_q": _valores_q,
+                            "motor_max_lags": _max_lags,
+                            "motor_umbral_sensibilidad": _umbral_sens,
+                            "motor_trend": _trend,
+                            "motor_top_exportar": 5,
+                            "motor_max_exog_por_modelo": 4,
+                        }
+                        st.success("Metadata manual aplicada.")
+                        st.rerun()
+
             if encabezado_colapsable("Contexto de la corrida", "sec_contexto"):
-                if meta:
-                    meta_kpis = extraer_kpis_meta(meta)
+                if meta_display:
+                    meta_kpis = extraer_kpis_meta(meta, meta_fallback)
                     c1, c2 = st.columns(2)
                     with c1:
                         pais_nombre = meta_kpis.get('pais', '-')
@@ -2879,7 +2925,7 @@ with tab_dash:
                             tipo_display = tipo_endog
                         st.markdown(card_kpi("Tipo endogena", tipo_display), unsafe_allow_html=True)
                 else:
-                    st.caption("Sin metadata embebida.")
+                    st.caption("Sin metadata embebida ni manual.")
             st.markdown(divider(), unsafe_allow_html=True)
             if encabezado_colapsable("Ordenar y Filtrar", "sec_orden"):
                 criterio = st.radio("Ordenar por:", ["Nombre (A-Z)", "Pruebas aprobadas ↓", "Pruebas aprobadas ↑",
@@ -2971,7 +3017,7 @@ with tab_dash:
             """, unsafe_allow_html=True)
         else:
             datos = st.session_state.modelos_data.get(st.session_state.modelo_seleccionado, {})
-            meta_kpis = extraer_kpis_meta(st.session_state.meta_contexto)
+            meta_kpis = extraer_kpis_meta(st.session_state.meta_contexto, st.session_state.get("meta_contexto_manual", {}))
             pais = meta_kpis.get('pais', '-')
             cartera = meta_kpis.get('cartera', '-')
             pais_codigo_hdr = BANDERAS_PAISES.get(pais, pais).upper()
