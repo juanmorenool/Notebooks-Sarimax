@@ -867,7 +867,10 @@ def graficar_macros_estatico(doc_data, output_path):
 
 def _pdf_texto(pdf, txt, h=6):
     seguro = str(txt).encode("latin-1", "ignore").decode("latin-1")
-    pdf.multi_cell(0, h, seguro)
+    try:
+        pdf.multi_cell(0, h, seguro, wrapmode="CHAR")
+    except TypeError:
+        pdf.multi_cell(0, h, seguro)
 
 def generar_pdf_metodologico(doc_data, ruta_imagen):
     pdf = FPDF()
