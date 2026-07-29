@@ -2130,17 +2130,17 @@ with tab_dash:
                                     key="criterio_orden")
                 st.session_state.criterio_ordenamiento = criterio
                 st.markdown(f"<p style='font-size:10px;color:{MUTED};margin:8px 0 4px;'>Ljung-Box</p>", unsafe_allow_html=True)
-                filtro_ljung = st.selectbox("", ["Todos", "A o B (Cumple)", "A, B o C", "Solo A"],
+                filtro_ljung = st.selectbox("Ljung-Box", ["Todos", "A o B (Cumple)", "A, B o C", "Solo A"],
                                              index=["Todos", "A o B (Cumple)", "A, B o C", "Solo A"].index(st.session_state.filtro_ljung),
                                              key="filtro_ljung_sel", label_visibility="collapsed")
                 st.session_state.filtro_ljung = filtro_ljung
                 st.markdown(f"<p style='font-size:10px;color:{MUTED};margin:8px 0 4px;'>Jarque-Bera</p>", unsafe_allow_html=True)
-                filtro_jarque = st.selectbox("", ["Todos", "A o B (Cumple)", "A, B o C", "Solo A"],
+                filtro_jarque = st.selectbox("Jarque-Bera", ["Todos", "A o B (Cumple)", "A, B o C", "Solo A"],
                                               index=["Todos", "A o B (Cumple)", "A, B o C", "Solo A"].index(st.session_state.filtro_jarque),
                                               key="filtro_jarque_sel", label_visibility="collapsed")
                 st.session_state.filtro_jarque = filtro_jarque
                 st.markdown(f"<p style='font-size:10px;color:{MUTED};margin:8px 0 4px;'>Heterocedasticidad</p>", unsafe_allow_html=True)
-                filtro_hetero = st.selectbox("", ["Todos", "A o B (Cumple)", "A, B o C", "Solo A"],
+                filtro_hetero = st.selectbox("Heterocedasticidad", ["Todos", "A o B (Cumple)", "A, B o C", "Solo A"],
                                               index=["Todos", "A o B (Cumple)", "A, B o C", "Solo A"].index(st.session_state.filtro_hetero),
                                               key="filtro_hetero_sel", label_visibility="collapsed")
                 st.session_state.filtro_hetero = filtro_hetero
@@ -2266,6 +2266,9 @@ with tab_dash:
                         st.success("✅ Documento generado. Descarga abajo.")
                     st.rerun()
             # =====================================================================
+            modelos_list, pruebas_dict_nav, scores_dict_nav, global_dict_nav = construir_opciones_modelos()
+            current_idx = modelos_list.index(st.session_state.modelo_seleccionado) if st.session_state.modelo_seleccionado in modelos_list else 0
+            tab_resumen, tab1, tab2, tab3, tab4 = st.tabs(["Resumen Modelo", "Visualizacion", "Predicciones", "Diagnosticos", "Comparar"])
             # TAB 0: RESUMEN MODELO
             # =====================================================================
             with tab_resumen:
