@@ -1,6 +1,7 @@
 import json
 import copy
 from typing import Dict, Tuple
+import unicodedata
 
 
 # ==================== MAPEOS ====================
@@ -32,17 +33,71 @@ CARTERA_LABEL = {
     "hipo": "hipotecas",
 }
 
+IMPACTO_LABEL_MAP = {
+    "vivi": "vivienda",
+    "cons": "consumo",
+    "tc": "tarjeta",
+    "vehic": "vehiculo",
+    "comercial": "comercial",
+    "pyme": "pyme",
+    "hipo": "hipotecas",
+}
+
 
 # ==================== GENERADOR ====================
 
+def _normalizar_texto(texto: str) -> str:
+    if texto is None:
+        return ""
+    texto = texto.strip().lower()
+    texto = "".join(
+        c for c in unicodedata.normalize("NFD", texto)
+        if unicodedata.category(c) != "Mn"
+    )
+    return texto.replace(" ", "_")
+
+
+def _resolver_pais_codigo(pais: str) -> str:
+    clave = _normalizar_texto(pais)
+    if len(clave) == 2:
+        return clave.upper()
+    for nombre, codigo in PAIS_MAP.items():
+        if _normalizar_texto(nombre) == clave:
+            return codigo
+    return pais.upper()
+
+
+def _resolver_cartera_codigo(cartera: str) -> str:
+    clave = _normalizar_texto(cartera)
+
+    if clave in CARTERA_LABEL:
+        return clave
+
+    for nombre, codigo in CARTERA_MAP.items():
+        if _normalizar_texto(nombre) == clave:
+            return codigo
+
+    return clave
+
+
+def _resolver_cartera_label(cartera: str) -> str:
+    codigo = _resolver_cartera_codigo(cartera)
+    return CARTERA_LABEL.get(codigo, _normalizar_texto(cartera))
+
+def _resolver_cartera_impacto(cartera: str) -> str:
+    codigo = _resolver_cartera_codigo(cartera)
+    return IMPACTO_LABEL_MAP.get(codigo, _normalizar_texto(cartera))
+
+
 def generar_nombres_archivos(pais: str, cartera: str) -> Dict[str, str]:
     """Genera los 4 nombres de archivos para el generador."""
-    pais_lower = pais.lower()
+    pais_lower = _resolver_pais_codigo(pais).lower()
+    cartera_codigo = _resolver_cartera_codigo(cartera)
     return {
-        "hist": f"hist_{cartera}_{pais_lower}_fwl_pd12.xlsx",
-        "opt": f"opt_macro_davi__{cartera}_{pais_lower}_fwl_pd12.xlsx",
-        "base": f"bas_macro_davi_{cartera}_{pais_lower}_fwl_pd12.xlsx",
-        "adv": f"adv_macro_davi__{cartera}_{pais_lower}_fwl_pd12.xlsx",
+        "hist": f"hist_{cartera_codigo}_{pais_lower}_fwl_pd12.xlsx",
+        "opt": f"opt_macro_davi__{cartera_codigo}_{pais_lower}_fwl_pd12.xlsx",
+        "base": f"bas_macro_davi_{cartera_codigo}_{pais_lower}_fwl_pd12.xlsx",
+        "adv": f"adv_macro_davi__{cartera_codigo}_{pais_lower}_fwl_pd12.xlsx",
     }
 
 
@@ -127,6 +182,8 @@ def generar_notebook_generador(
     """
     with open(template_path, 'r', encoding='utf-8') as f:
         nb = json.load(f)
+
+    cartera_codigo = _resolver_cartera_codigo(cartera)
     
     # Genera nombres de archivos
     if nombres_custom:
@@ -137,7 +194,7 @@ def generar_notebook_generador(
     # Parámetros a reemplazar en la CELDA 4 (configuración)
     reemplazos_celda4 = {
         'PAIS': f'"{pais}"',
-        'CARTERA': f'"{cartera}"',
+        'CARTERA': f'"{cartera_codigo}"',
         'FECHA_INICIO': f'"{fecha_inicio}"',
         'FECHA_FIN_HIST': f'"{fecha_fin}"',
         'MODO_ENDO': f'"{modo_endo}"',
@@ -155,19 +212,32 @@ def generar_notebook_generador(
             source = reemplazar_en_celda(source, reemplazos_celda4)
             nb['cells'][i]['source'] = _ensure_source_list(source)
     
-    # Reemplaza en celda 7 (carga de exógenas)
+    # Reemplaza en celda de carga de exógenas (sin depender de índice fijo)
+    exo_reemplazado = False
+    endo_reemplazado = False
     for i, cell in enumerate(nb['cells']):
-        if i == 7 and cell['cell_type'] == 'code':
-            source = ''.join(cell['source']) if isinstance(cell['source'], list) else cell['source']
-            lines = source.split('\n')
-            new_lines = []
-            for line in lines:
-                if 'Variables Macro FWL' in line and 'read_excel' in line:
-                    new_lines.append(f'exo = pd.read_excel(\'Variables Macro FWL {pais}.xlsx\')')
-                else:
-                    new_lines.append(line)
+        if cell['cell_type'] != 'code':
+            continue
+        source = ''.join(cell['source']) if isinstance(cell['source'], list) else cell['source']
+        lines = source.split('\n')
+        new_lines = []
+        line_changed = False
+        for line in lines:
+            if 'Variables Macro FWL' in line and 'read_excel' in line:
+                new_lines.append(f'exo = pd.read_excel(\'Variables Macro FWL {pais}.xlsx\')')
+                line_changed = True
+                exo_reemplazado = True
+            elif 'test_pd_lra_' in line and 'read_csv' in line:
+                new_lines.append(f"endo = pd.read_csv('test_pd_lra_{cartera_codigo}_01mar26.csv')")
+                line_changed = True
+                endo_reemplazado = True
+            else:
+                new_lines.append(line)
+        if line_changed:
             source = '\n'.join(new_lines)
             nb['cells'][i]['source'] = _ensure_source_list(source)
+        if exo_reemplazado and endo_reemplazado:
+            break
     
     return nb
 
@@ -185,8 +255,10 @@ def generar_notebook_motor(
     """
     with open(template_path, 'r', encoding='utf-8') as f:
         nb = json.load(f)
-    
-    pais_lower = pais.lower()
+
+    pais_codigo = _resolver_pais_codigo(pais)
+    cartera_codigo = _resolver_cartera_codigo(cartera)
+    cartera_impacto = _resolver_cartera_impacto(cartera)
     
     # Parámetros a reemplazar en la CELDA 4 (identificación endógena)
     reemplazos_celda4 = {
@@ -203,14 +275,13 @@ def generar_notebook_motor(
             nb['cells'][i]['source'] = _ensure_source_list(source)
     
     # Parámetros en la CELDA 9 (motor de modelos SARIMAX)
-    cartera_label = CARTERA_LABEL.get(cartera, cartera)
-    
     reemplazos_celda9 = {
         'TIPO_ENDOGENA': f'"{tipo_modelo}"',
         'MAX_LAGS': str(max_lags),
-        'ARCHIVO_SALIDA': f'"Modelos_{pais}_{cartera}.xlsx"',
-        'PAIS_REPORTE': f'"{pais}"',
-        'ARCHIVO_REPORTE': f'"Impacto_{cartera}_{pais}.csv"',
+        'ARCHIVO_SALIDA': f'"Modelos_{pais_codigo}_{cartera_codigo}.xlsx"',
+        'PAIS_REPORTE': f'"{pais_codigo}"',
+        'ARCHIVO_REPORTE': f'"Impacto_{cartera_codigo}_{pais_codigo}.csv"',
+        'COLUMNA_IMPACTO': f'"Impacto_{cartera_impacto}"',
     }
     
     for i, cell in enumerate(nb['cells']):

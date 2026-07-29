@@ -9,6 +9,12 @@ import os
 import base64
 import openpyxl
 from pathlib import Path
+from datetime import datetime
+from io import BytesIO
+import tempfile
+import matplotlib.pyplot as plt
+from fpdf import FPDF
+from openpyxl.drawing.image import Image as XLImage
 
 # =============================================================================
 # PALETA CORPORATIVA BANCA
@@ -94,6 +100,23 @@ CARTERA_LABEL_GEN = {
     'tarjeta': 'Tarjeta',
     'vehiculo': 'Vehiculo',
 }
+
+# =============================================================================
+# TEXTOS DOCUMENTO METODOLOGICO
+# =============================================================================
+TEXTO_METODOLOGIA_SARIMAX = (
+    "Este documento resume la seleccion final de un modelo SARIMAX para IFRS 9. "
+    "El motor sigue 8 bloques: (1) carga y validacion de insumos, (2) limpieza y "
+    "transformaciones, (3) construccion de escenarios, (4) busqueda de rezagos AR/MA, "
+    "(5) ajuste econometrico, (6) diagnosticos de residuos, (7) filtros tecnicos y "
+    "(8) exportacion con trazabilidad."
+)
+
+GLOSARIO_FWL = "FWL [CAMPO]: factor de ajuste por escenario macro utilizado para sensibilidad y consistencia del modelo."
+GLOSARIO_LOGIT = "LOGIT [CAMPO]: transformacion logit de la endogena para estabilizar escala y mejorar ajuste."
+GLOSARIO_MODO = "MODO [CAMPO]: estrategia de construccion de la endogena (actual o media movil)."
+GLOSARIO_SENSIBILIDAD = "SENSIBILIDAD [CAMPO]: diferencia entre medias de escenarios OPT y ADV para validar reaccion del modelo."
+GLOSARIO_PARAMETROS = "PARAMETROS [CAMPO]: conjunto de hiperparametros del motor (max lags, VIF, top exportar y rangos FWL)."
 
 def inject_css():
     st.markdown(f"""
@@ -554,21 +577,66 @@ def calcular_score_global(pruebas_df):
         return None, detalle
     return round(acumulado / peso_total, 1), detalle
 
-def clasificar_score_global(score):
-    if score is None:
-        return "N/A", GRAY, ESTADO_NEUTRAL[0]
-    if score >= 7:
-        return "BUENO", GREEN, ESTADO_OK[0]
-    elif score >= 5:
-        return "REGULAR", "#B8860B", ESTADO_WARN[0]
-    else:
-        return "DEFICIENTE", RED, ESTADO_FAIL[0]
+def clasificar_score_global(score_num):
+    if score_num is None:
+        return "N/A", "No hay informacion suficiente para concluir la calidad global del modelo."
+    if score_num >= 7:
+        return "BUENO", "El modelo presenta diagnosticos robustos y consistentes para uso oficial."
+    if score_num >= 5:
+        return "REGULAR", "El modelo es util, pero requiere seguimiento y ajustes focalizados."
+    return "DEFICIENTE", "El modelo no cumple criterios minimos para seleccion final sin reprocesamiento."
+
+def estilo_score_global(score_num):
+    etiqueta, _ = clasificar_score_global(score_num)
+    if etiqueta == "N/A":
+        return etiqueta, GRAY, ESTADO_NEUTRAL[0]
+    if etiqueta == "BUENO":
+        return etiqueta, GREEN, ESTADO_OK[0]
+    if etiqueta == "REGULAR":
+        return etiqueta, "#B8860B", ESTADO_WARN[0]
+    return etiqueta, RED, ESTADO_FAIL[0]
 
 def score_global_badge(score, tamano="12px"):
-    etiqueta, color, bg = clasificar_score_global(score)
+    etiqueta, color, bg = estilo_score_global(score)
     valor = f"{score:.1f}/10" if score is not None else "N/A"
     return (f'<span style="background:{bg};color:{color};font-size:{tamano};padding:3px 10px;'
             f'border-radius:4px;font-weight:700;">{valor} - {etiqueta}</span>')
+
+def texto_ljungbox(score, p):
+    p_str = fmt_pvalor(p)
+    if score == "A":
+        return f"A: p={p_str}. Sin evidencia de autocorrelacion en residuos."
+    if score == "B":
+        return f"B: p={p_str}. Comportamiento aceptable, sin evidencia fuerte de autocorrelacion."
+    if score == "C":
+        return f"C: p={p_str}. Senal moderada de autocorrelacion; requiere monitoreo."
+    if score == "D":
+        return f"D: p={p_str}. Evidencia clara de autocorrelacion; requiere ajuste del modelo."
+    return "Sin datos para interpretar Ljung-Box."
+
+def texto_jarquebera(score, p):
+    p_str = fmt_pvalor(p)
+    if score == "A":
+        return f"A: p={p_str}. Residuos consistentes con normalidad."
+    if score == "B":
+        return f"B: p={p_str}. Normalidad razonable para analisis operativo."
+    if score == "C":
+        return f"C: p={p_str}. Posible desvio de normalidad; revisar outliers o transformaciones."
+    if score == "D":
+        return f"D: p={p_str}. No normalidad marcada de residuos."
+    return "Sin datos para interpretar Jarque-Bera."
+
+def texto_hetero(score, p):
+    p_str = fmt_pvalor(p)
+    if score == "A":
+        return f"A: p={p_str}. Varianza de residuos estable."
+    if score == "B":
+        return f"B: p={p_str}. Sin evidencia significativa de heterocedasticidad."
+    if score == "C":
+        return f"C: p={p_str}. Senal debil de heterocedasticidad; monitorear estabilidad."
+    if score == "D":
+        return f"D: p={p_str}. Evidencia de heterocedasticidad; revisar especificacion."
+    return "Sin datos para interpretar heterocedasticidad."
 
 def interpretar_prueba(nombre_prueba, p_val, score):
     if score == 'N/A' or p_val is None or (isinstance(p_val, float) and pd.isna(p_val)):
@@ -658,6 +726,355 @@ def extraer_kpis_meta(meta):
         'max_exog': meta.get('motor_max_exog_por_modelo', 'N/A'),
         'top_exportar': meta.get('motor_top_exportar', 'N/A'),
     }
+
+# =============================================================================
+# DOCUMENTO METODOLOGICO MODELO FINAL
+# =============================================================================
+def _normalizar_nombre_archivo(texto):
+    limpio = "".join(ch if str(ch).isalnum() or ch in ("_", "-", ".") else "_" for ch in str(texto))
+    while "__" in limpio:
+        limpio = limpio.replace("__", "_")
+    return limpio.strip("_") or "modelo_final"
+
+def _obtener_fecha_fin_hist(meta_contexto):
+    if not meta_contexto:
+        return None
+    candidatos = [
+        "generador_fecha_fin_hist", "fecha_fin_hist", "fecha_fin_historico",
+        "motor_fecha_fin_hist", "FECHA_FIN_HIST"
+    ]
+    for clave in candidatos:
+        if clave in meta_contexto and meta_contexto.get(clave):
+            fecha = pd.to_datetime(meta_contexto.get(clave), errors="coerce")
+            if not pd.isna(fecha):
+                return fecha
+    return None
+
+def recolectar_datos_documento(nombre_modelo, modelos_data, meta_contexto):
+    modelo = modelos_data.get(nombre_modelo, {})
+    pruebas = modelo.get("pruebas")
+    coeficientes = modelo.get("coeficientes")
+    exogenas = modelo.get("exogenas_nombres", [])
+    scores = obtener_scores_modelo(pruebas)
+    score_global_num, detalle_global = calcular_score_global(pruebas)
+    score_global_txt, score_global_conclusion = clasificar_score_global(score_global_num)
+    significancia = obtener_significancia_exogenas(coeficientes, exogenas)
+    ar_count, ma_count = contar_ar_ma(coeficientes)
+    meta_kpis = extraer_kpis_meta(meta_contexto)
+
+    diag_rows = []
+    if pruebas is not None and not pruebas.empty:
+        for _, row in pruebas.iterrows():
+            prueba = limpiar_nombre_prueba(row.get("Prueba", ""))
+            p_val = row.get("P_value", None)
+            score, _ = calcular_score(p_val, prueba)
+            prueba_lower = str(prueba).lower()
+            if "ljung" in prueba_lower or "box" in prueba_lower:
+                interpretacion = texto_ljungbox(score, p_val)
+            elif "jarque" in prueba_lower or "bera" in prueba_lower:
+                interpretacion = texto_jarquebera(score, p_val)
+            else:
+                interpretacion = texto_hetero(score, p_val)
+            diag_rows.append({
+                "prueba": prueba,
+                "estadistico": row.get("Estadistico"),
+                "p_value": p_val,
+                "score": score,
+                "interpretacion": interpretacion,
+            })
+
+    exog_rows = [
+        {"exogena": ex, "p_value": p_val, "estado": estado}
+        for ex, p_val, estado in significancia
+    ]
+
+    coefs_rows = []
+    if coeficientes is not None and not coeficientes.empty:
+        for _, row in coeficientes.iterrows():
+            coefs_rows.append({
+                "variable": row.get("Variable"),
+                "coeficiente": row.get("Coeficiente"),
+                "p_value": row.get("P_value"),
+                "tipo": clasificar_variable(row.get("Variable", "")),
+            })
+
+    return {
+        "nombre_modelo": nombre_modelo,
+        "fecha_generacion": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "meta_contexto": meta_contexto or {},
+        "meta_kpis": meta_kpis,
+        "score_global_num": score_global_num,
+        "score_global_detalle": detalle_global,
+        "score_global_clase": score_global_txt,
+        "score_global_conclusion": score_global_conclusion,
+        "scores": scores,
+        "diagnosticos": diag_rows,
+        "exogenas": exog_rows,
+        "coeficientes": coefs_rows,
+        "ar_count": ar_count,
+        "ma_count": ma_count,
+        "fwl_min": meta_kpis.get("fwl_min", "N/A"),
+        "fwl_max": meta_kpis.get("fwl_max", "N/A"),
+        "max_exog": meta_kpis.get("max_exog", "N/A"),
+        "vif_max": meta_kpis.get("vif_max", "N/A"),
+        "top_exportar": meta_kpis.get("top_exportar", "N/A"),
+        "umbral_sensibilidad": (meta_contexto or {}).get("motor_umbral_sensibilidad", "N/A"),
+        "data_exogenas": modelo.get("exogenas"),
+        "fecha_fin_hist": _obtener_fecha_fin_hist(meta_contexto or {}),
+    }
+
+def graficar_macros_estatico(doc_data, output_path):
+    df_exog = doc_data.get("data_exogenas")
+    if df_exog is None or df_exog.empty:
+        return None
+    df = df_exog.copy()
+    fecha_col = "fecha" if "fecha" in df.columns else df.columns[0]
+    df[fecha_col] = pd.to_datetime(df[fecha_col], errors="coerce")
+    df = df.dropna(subset=[fecha_col]).sort_values(fecha_col)
+    if df.empty:
+        return None
+
+    escenarios = [
+        ("_BASE", "Base", "#2a7f3f"),
+        ("_ADVERSO", "Adverso", "#b22222"),
+        ("_OPTIMISTA", "Optimista", "#e08a00"),
+    ]
+    plt.figure(figsize=(10, 5))
+    dibujado = 0
+    for sufijo, etiqueta, color in escenarios:
+        cols = [c for c in df.columns if str(c).upper().endswith(sufijo)]
+        if not cols:
+            continue
+        serie = df[cols].apply(pd.to_numeric, errors="coerce").mean(axis=1)
+        if serie.notna().any():
+            plt.plot(df[fecha_col], serie, label=etiqueta, color=color, linewidth=2)
+            dibujado += 1
+
+    fecha_fin_hist = doc_data.get("fecha_fin_hist")
+    if fecha_fin_hist is not None and not pd.isna(fecha_fin_hist):
+        plt.axvline(pd.to_datetime(fecha_fin_hist), color="#555555", linestyle="--", linewidth=1.5, label="Fin histórico")
+
+    plt.title("Trayectoria de Exógenas por Escenario")
+    plt.xlabel("Fecha")
+    plt.ylabel("Nivel agregado")
+    plt.grid(alpha=0.25)
+    if dibujado > 0:
+        plt.legend()
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150)
+    plt.close()
+    return output_path
+
+def _pdf_texto(pdf, txt, h=6):
+    seguro = str(txt).encode("latin-1", "ignore").decode("latin-1")
+    pdf.multi_cell(0, h, seguro)
+
+def generar_pdf_metodologico(doc_data, ruta_imagen):
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+
+    # Portada
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 16)
+    _pdf_texto(pdf, "Documento Metodologico SARIMAX")
+    pdf.set_font("Helvetica", "", 12)
+    _pdf_texto(pdf, f"Modelo final: {doc_data.get('nombre_modelo', 'N/A')}")
+    _pdf_texto(pdf, f"Fecha de generacion: {doc_data.get('fecha_generacion', 'N/A')}")
+    _pdf_texto(pdf, f"Pais: {doc_data.get('meta_kpis', {}).get('pais', 'N/A')}")
+    _pdf_texto(pdf, f"Cartera: {doc_data.get('meta_kpis', {}).get('cartera', 'N/A')}")
+
+    # Metodologia
+    pdf.ln(4)
+    pdf.set_font("Helvetica", "B", 13)
+    _pdf_texto(pdf, "Metodologia")
+    pdf.set_font("Helvetica", "", 11)
+    _pdf_texto(pdf, TEXTO_METODOLOGIA_SARIMAX)
+
+    # Configuracion + glosarios
+    pdf.ln(2)
+    pdf.set_font("Helvetica", "B", 13)
+    _pdf_texto(pdf, "Configuracion")
+    pdf.set_font("Helvetica", "", 10)
+    config_rows = [
+        ("Tipo endogena", doc_data.get("meta_kpis", {}).get("tipo_endogena", "N/A")),
+        ("Modo endogena", doc_data.get("meta_kpis", {}).get("modo_endogena", "N/A")),
+        ("Ventana MM", doc_data.get("meta_kpis", {}).get("ventana_mm", "N/A")),
+        ("VIF max", doc_data.get("vif_max", "N/A")),
+        ("Rango FWL", f"{doc_data.get('fwl_min', 'N/A')} - {doc_data.get('fwl_max', 'N/A')}"),
+        ("Max exogenas", doc_data.get("max_exog", "N/A")),
+        ("Top exportar", doc_data.get("top_exportar", "N/A")),
+        ("Umbral sensibilidad", doc_data.get("umbral_sensibilidad", "N/A")),
+        ("AR / MA", f"{doc_data.get('ar_count', 0)} / {doc_data.get('ma_count', 0)}"),
+    ]
+    for k, v in config_rows:
+        _pdf_texto(pdf, f"- {k}: {v}")
+    pdf.ln(1)
+    _pdf_texto(pdf, GLOSARIO_FWL)
+    _pdf_texto(pdf, GLOSARIO_LOGIT)
+    _pdf_texto(pdf, GLOSARIO_MODO)
+    _pdf_texto(pdf, GLOSARIO_SENSIBILIDAD)
+    _pdf_texto(pdf, GLOSARIO_PARAMETROS)
+
+    # Variables exogenas
+    pdf.ln(2)
+    pdf.set_font("Helvetica", "B", 13)
+    _pdf_texto(pdf, "Variables Exogenas")
+    pdf.set_font("Helvetica", "", 10)
+    exogenas = doc_data.get("exogenas", [])
+    if not exogenas:
+        _pdf_texto(pdf, "Sin exogenas disponibles.")
+    else:
+        for row in exogenas:
+            ptxt = fmt_pvalor(row.get("p_value"))
+            _pdf_texto(pdf, f"- {row.get('exogena', '')}: {row.get('estado', 'N/A')} (p={ptxt})")
+
+    # Grafica macros
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 13)
+    _pdf_texto(pdf, "Grafica de Macros (Exogenas)")
+    if ruta_imagen and os.path.exists(ruta_imagen):
+        pdf.image(ruta_imagen, x=10, y=30, w=185)
+        pdf.ln(105)
+    else:
+        pdf.set_font("Helvetica", "", 10)
+        _pdf_texto(pdf, "No fue posible generar la grafica de macros.")
+
+    # Diagnosticos
+    pdf.set_font("Helvetica", "B", 13)
+    _pdf_texto(pdf, "Diagnosticos")
+    pdf.set_font("Helvetica", "", 10)
+    diagnosticos = doc_data.get("diagnosticos", [])
+    if not diagnosticos:
+        _pdf_texto(pdf, "Sin pruebas de diagnostico disponibles.")
+    else:
+        for d in diagnosticos:
+            _pdf_texto(
+                pdf,
+                f"- {d.get('prueba', 'N/A')} | Score {d.get('score', 'N/A')} | "
+                f"Estadistico={fmt_pvalor(d.get('estadistico'))} | p={fmt_pvalor(d.get('p_value'))}"
+            )
+            _pdf_texto(pdf, f"  {d.get('interpretacion', '')}")
+
+    # Score global y conclusion
+    pdf.ln(2)
+    pdf.set_font("Helvetica", "B", 13)
+    _pdf_texto(pdf, "Score Global y Conclusion")
+    pdf.set_font("Helvetica", "", 11)
+    score_num = doc_data.get("score_global_num")
+    score_txt = f"{score_num:.1f}/10" if score_num is not None else "N/A"
+    _pdf_texto(pdf, f"Score Global: {score_txt} - {doc_data.get('score_global_clase', 'N/A')}")
+    _pdf_texto(pdf, doc_data.get("score_global_conclusion", ""))
+
+    pdf_raw = pdf.output(dest="S")
+    if isinstance(pdf_raw, (bytes, bytearray)):
+        return bytes(pdf_raw)
+    return str(pdf_raw).encode("latin-1", "ignore")
+
+def generar_excel_metodologico(doc_data, ruta_imagen):
+    wb = openpyxl.Workbook()
+    ws_meta = wb.active
+    ws_meta.title = "Metadatos"
+    ws_meta.append(["Campo", "Valor"])
+    meta_rows = [
+        ("Modelo final", doc_data.get("nombre_modelo", "N/A")),
+        ("Fecha generacion", doc_data.get("fecha_generacion", "N/A")),
+        ("Pais", doc_data.get("meta_kpis", {}).get("pais", "N/A")),
+        ("Cartera", doc_data.get("meta_kpis", {}).get("cartera", "N/A")),
+        ("Tipo endogena", doc_data.get("meta_kpis", {}).get("tipo_endogena", "N/A")),
+        ("Modo endogena", doc_data.get("meta_kpis", {}).get("modo_endogena", "N/A")),
+        ("Ventana MM", doc_data.get("meta_kpis", {}).get("ventana_mm", "N/A")),
+        ("VIF max", doc_data.get("vif_max", "N/A")),
+        ("Rango FWL", f"{doc_data.get('fwl_min', 'N/A')} - {doc_data.get('fwl_max', 'N/A')}"),
+        ("Max exogenas", doc_data.get("max_exog", "N/A")),
+        ("Top exportar", doc_data.get("top_exportar", "N/A")),
+        ("Umbral sensibilidad", doc_data.get("umbral_sensibilidad", "N/A")),
+        ("AR / MA", f"{doc_data.get('ar_count', 0)} / {doc_data.get('ma_count', 0)}"),
+        ("Score global", f"{doc_data.get('score_global_num')}/10" if doc_data.get("score_global_num") is not None else "N/A"),
+        ("Clasificacion score", doc_data.get("score_global_clase", "N/A")),
+        ("Conclusion", doc_data.get("score_global_conclusion", "")),
+    ]
+    for row in meta_rows:
+        ws_meta.append(list(row))
+
+    ws_exo = wb.create_sheet("Exógenas")
+    ws_exo.append(["Exogena", "P_value", "Estado"])
+    for row in doc_data.get("exogenas", []):
+        ws_exo.append([row.get("exogena"), row.get("p_value"), row.get("estado")])
+
+    ws_diag = wb.create_sheet("Diagnósticos")
+    ws_diag.append(["Prueba", "Estadistico", "P_value", "Score", "Interpretacion"])
+    for row in doc_data.get("diagnosticos", []):
+        ws_diag.append([
+            row.get("prueba"), row.get("estadistico"), row.get("p_value"),
+            row.get("score"), row.get("interpretacion")
+        ])
+
+    ws_coef = wb.create_sheet("Coeficientes")
+    ws_coef.append(["Variable", "Coeficiente", "P_value", "Tipo"])
+    for row in doc_data.get("coeficientes", []):
+        ws_coef.append([row.get("variable"), row.get("coeficiente"), row.get("p_value"), row.get("tipo")])
+
+    ws_graph = wb.create_sheet("Gráfica")
+    ws_graph["A1"] = "Grafica de macros (solo exogenas)"
+    if ruta_imagen and os.path.exists(ruta_imagen):
+        img = XLImage(ruta_imagen)
+        img.width = 920
+        img.height = 420
+        ws_graph.add_image(img, "A3")
+
+    for ws in [ws_meta, ws_exo, ws_diag, ws_coef]:
+        ws.column_dimensions["A"].width = 28
+        ws.column_dimensions["B"].width = 35
+        ws.column_dimensions["C"].width = 25
+        ws.column_dimensions["D"].width = 20
+        ws.column_dimensions["E"].width = 60
+
+    buff = BytesIO()
+    wb.save(buff)
+    buff.seek(0)
+    return buff.getvalue()
+
+@st.dialog("Confirmación de modelo final")
+def dialogo_confirmacion_modelo_final():
+    nombre = st.session_state.get("modelo_candidato_final")
+    if not nombre:
+        st.session_state.mostrar_confirmacion_final = False
+        return
+    st.write(
+        f"¿Confirma que [{nombre}] es el modelo final? Esta acción generará el documento "
+        "metodológico y marcará este modelo como salida oficial."
+    )
+    c1, c2 = st.columns(2)
+    if c1.button("Confirmar", use_container_width=True):
+        ruta_tmp = None
+        try:
+            with st.spinner("Generando documento metodológico..."):
+                doc_data = recolectar_datos_documento(nombre, st.session_state.modelos_data, st.session_state.meta_contexto)
+                tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+                ruta_tmp = tmp.name
+                tmp.close()
+                graficar_macros_estatico(doc_data, ruta_tmp)
+                pdf_bytes = generar_pdf_metodologico(doc_data, ruta_tmp)
+                excel_bytes = generar_excel_metodologico(doc_data, ruta_tmp)
+                nombre_archivo = _normalizar_nombre_archivo(nombre)
+                st.session_state.modelo_final = nombre
+                st.session_state.documento_metodologico_pdf = pdf_bytes
+                st.session_state.documento_metodologico_excel = excel_bytes
+                st.session_state.documento_metodologico_pdf_nombre = f"Documento_Metodologico_{nombre_archivo}.pdf"
+                st.session_state.documento_metodologico_excel_nombre = f"Documento_Metodologico_{nombre_archivo}.xlsx"
+                st.session_state.documento_metodologico_data = doc_data
+            st.session_state.mostrar_confirmacion_final = False
+            st.session_state.modelo_candidato_final = None
+            st.rerun()
+        except Exception as e:
+            st.error(f"No fue posible generar el documento metodológico: {e}")
+        finally:
+            if ruta_tmp and os.path.exists(ruta_tmp):
+                os.remove(ruta_tmp)
+    if c2.button("Cancelar", use_container_width=True):
+        st.session_state.mostrar_confirmacion_final = False
+        st.session_state.modelo_candidato_final = None
+        st.rerun()
 
 # =============================================================================
 # PLOTS
@@ -1458,6 +1875,14 @@ _prefs_guardadas = cargar_prefs_sidebar()
 for key, default in [
     ("uploaded_file", None), ("modelos_data", {}), ("meta_contexto", None),
     ("modelo_seleccionado", None),
+    ("modelo_final", None),
+    ("modelo_candidato_final", None),
+    ("mostrar_confirmacion_final", False),
+    ("documento_metodologico_pdf", None),
+    ("documento_metodologico_excel", None),
+    ("documento_metodologico_pdf_nombre", None),
+    ("documento_metodologico_excel_nombre", None),
+    ("documento_metodologico_data", None),
     ("criterio_ordenamiento", _prefs_guardadas.get("criterio_ordenamiento", "Pruebas aprobadas ↓")),
     ("exog_sel", {}), ("pred_filtro", "Todas"),
     ("nav_sticky", _prefs_guardadas.get("nav_sticky", True)),
@@ -1589,6 +2014,14 @@ with tab_dash:
                     st.session_state.last_file_name = uploaded.name
                     st.session_state.vista_resumen = True
                     st.session_state.comparar_sel = []
+                    st.session_state.modelo_final = None
+                    st.session_state.modelo_candidato_final = None
+                    st.session_state.mostrar_confirmacion_final = False
+                    st.session_state.documento_metodologico_pdf = None
+                    st.session_state.documento_metodologico_excel = None
+                    st.session_state.documento_metodologico_pdf_nombre = None
+                    st.session_state.documento_metodologico_excel_nombre = None
+                    st.session_state.documento_metodologico_data = None
                 st.success(f"Archivo cargado: {uploaded.name}")
                 if st.session_state.modelo_seleccionado is None or st.session_state.modelo_seleccionado not in st.session_state.modelos_data:
                     st.session_state.modelo_seleccionado = list(st.session_state.modelos_data.keys())[0]
@@ -1602,6 +2035,14 @@ with tab_dash:
                 st.session_state.exog_sel = {}
                 st.session_state.vista_resumen = True
                 st.session_state.comparar_sel = []
+                st.session_state.modelo_final = None
+                st.session_state.modelo_candidato_final = None
+                st.session_state.mostrar_confirmacion_final = False
+                st.session_state.documento_metodologico_pdf = None
+                st.session_state.documento_metodologico_excel = None
+                st.session_state.documento_metodologico_pdf_nombre = None
+                st.session_state.documento_metodologico_excel_nombre = None
+                st.session_state.documento_metodologico_data = None
                 st.rerun()
         if st.session_state.modelos_data:
             st.markdown(divider(), unsafe_allow_html=True)
@@ -1730,6 +2171,8 @@ with tab_dash:
             """, unsafe_allow_html=True)
         else:
             datos = st.session_state.modelos_data.get(st.session_state.modelo_seleccionado, {})
+            if st.session_state.get("mostrar_confirmacion_final"):
+                dialogo_confirmacion_modelo_final()
             meta_kpis = extraer_kpis_meta(st.session_state.meta_contexto)
             pais = meta_kpis.get('pais', '-')
             cartera = meta_kpis.get('cartera', '-')
@@ -1750,7 +2193,21 @@ with tab_dash:
             </div>
             <div style="height:1px;background:{BORDER};margin:12px 0 16px;"></div>
             """, unsafe_allow_html=True)
-            hcol1, hcol2, hcol3 = st.columns([1.4, 1.1, 1])
+            if st.session_state.get("modelo_final") == st.session_state.modelo_seleccionado:
+                st.markdown(
+                    f'<div style="display:inline-block;background:#fff4d6;color:{NAVY};'
+                    f'border:1px solid #f0d58a;border-radius:6px;padding:6px 10px;'
+                    f'font-size:12px;font-weight:700;margin:0 0 10px;">🎯 MODELO FINAL SELECCIONADO</div>',
+                    unsafe_allow_html=True
+                )
+            elif st.session_state.get("modelo_final"):
+                st.markdown(
+                    f"<p style='font-size:11px;color:{MUTED};margin:0 0 10px;'>"
+                    f"Modelo final actual: <b>{st.session_state.get('modelo_final')}</b></p>",
+                    unsafe_allow_html=True
+                )
+
+            hcol1, hcol2, hcol3, hcol4 = st.columns([1.2, 1, 1, 1.3])
             with hcol1:
                 if st.button("Ver resumen de la corrida", key="btn_ver_resumen", use_container_width=True):
                     st.session_state.vista_resumen = True
@@ -1762,6 +2219,11 @@ with tab_dash:
                     st.rerun()
             with hcol3:
                 boton_favorito(st.session_state.modelo_seleccionado, key_suffix="detalle")
+            with hcol4:
+                if st.button("🎯 Marcar como modelo final", key="btn_modelo_final_top", use_container_width=True):
+                    st.session_state.modelo_candidato_final = st.session_state.modelo_seleccionado
+                    st.session_state.mostrar_confirmacion_final = True
+                    st.rerun()
             modelos_list, pruebas_dict_nav, scores_dict_nav, global_dict_nav = construir_opciones_modelos()
             current_idx = modelos_list.index(st.session_state.modelo_seleccionado) if st.session_state.modelo_seleccionado in modelos_list else 0
             tab_resumen, tab1, tab2, tab3, tab4 = st.tabs(["Resumen Modelo", "Visualizacion", "Predicciones", "Diagnosticos", "Comparar"])
@@ -1959,6 +2421,31 @@ with tab_dash:
                             render_columna_comparacion(nombre_comp)
                 else:
                     st.info("Seleccione al menos un modelo para iniciar la comparacion.")
+            st.markdown(divider(), unsafe_allow_html=True)
+            cfinal1, cfinal2, cfinal3 = st.columns([1.3, 1, 1])
+            with cfinal1:
+                if st.button("🎯 Marcar como modelo final", key="btn_modelo_final_bottom", use_container_width=True):
+                    st.session_state.modelo_candidato_final = st.session_state.modelo_seleccionado
+                    st.session_state.mostrar_confirmacion_final = True
+                    st.rerun()
+            with cfinal2:
+                st.download_button(
+                    "⬇️ Descargar PDF",
+                    data=st.session_state.documento_metodologico_pdf or b"",
+                    file_name=st.session_state.documento_metodologico_pdf_nombre or "Documento_Metodologico.pdf",
+                    mime="application/pdf",
+                    disabled=not bool(st.session_state.documento_metodologico_pdf),
+                    use_container_width=True
+                )
+            with cfinal3:
+                st.download_button(
+                    "⬇️ Descargar Excel",
+                    data=st.session_state.documento_metodologico_excel or b"",
+                    file_name=st.session_state.documento_metodologico_excel_nombre or "Documento_Metodologico.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    disabled=not bool(st.session_state.documento_metodologico_excel),
+                    use_container_width=True
+                )
             # --- Bottom nav bar ---
             nav_sticky = st.session_state.get("nav_sticky", True)
             if nav_sticky:
