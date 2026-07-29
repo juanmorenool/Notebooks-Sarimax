@@ -757,29 +757,49 @@ def recolectar_datos_documento(nombre_modelo, modelos_data, meta_contexto):
     pruebas = modelo.get("pruebas")
     coeficientes = modelo.get("coeficientes")
     exogenas = modelo.get("exogenas_nombres", [])
-    scores = obtener_scores_modelo(pruebas)
+    scores_base = obtener_scores_modelo(pruebas)
     score_global_num, detalle_global = calcular_score_global(pruebas)
     score_global_txt, score_global_conclusion = clasificar_score_global(score_global_num)
     significancia = obtener_significancia_exogenas(coeficientes, exogenas)
     ar_count, ma_count = contar_ar_ma(coeficientes)
     meta_kpis = extraer_kpis_meta(meta_contexto)
 
+    scores = {
+        "ljung_box": {"score": "N/A", "p_valor": None, "estadistico": None},
+        "jarque_bera": {"score": "N/A", "p_valor": None, "estadistico": None},
+        "heterocedasticidad": {"score": "N/A", "p_valor": None, "estadistico": None},
+    }
+    for clave, valor in scores_base.items():
+        letra = valor[0] if isinstance(valor, tuple) and len(valor) > 0 else valor
+        if clave in scores and letra is not None:
+            scores[clave]["score"] = letra
+
     diag_rows = []
     if pruebas is not None and not pruebas.empty:
         for _, row in pruebas.iterrows():
             prueba = limpiar_nombre_prueba(row.get("Prueba", ""))
             p_val = row.get("P_value", None)
+            estadistico = row.get("Estadistico")
             score, _ = calcular_score(p_val, prueba)
             prueba_lower = str(prueba).lower()
             if "ljung" in prueba_lower or "box" in prueba_lower:
                 interpretacion = texto_ljungbox(score, p_val)
+                score_key = "ljung_box"
             elif "jarque" in prueba_lower or "bera" in prueba_lower:
                 interpretacion = texto_jarquebera(score, p_val)
+                score_key = "jarque_bera"
             else:
                 interpretacion = texto_hetero(score, p_val)
+                score_key = "heterocedasticidad"
+
+            scores[score_key] = {
+                "score": score,
+                "p_valor": p_val,
+                "estadistico": estadistico,
+            }
             diag_rows.append({
                 "prueba": prueba,
-                "estadistico": row.get("Estadistico"),
+                "estadistico": estadistico,
                 "p_value": p_val,
                 "score": score,
                 "interpretacion": interpretacion,
@@ -1047,6 +1067,18 @@ def texto_hetero(score: str, p: float) -> str:
 
 def clasificar_score_global(s: float) -> tuple:
     """Retorna (clasificación, conclusión)"""
+    if s is None:
+        return (
+            "N/A",
+            "No hay información suficiente para calcular la clasificación global del modelo."
+        )
+    try:
+        s = float(s)
+    except (TypeError, ValueError):
+        return (
+            "N/A",
+            "No hay información suficiente para calcular la clasificación global del modelo."
+        )
     if s >= 7:
         return (
             "Bueno",
