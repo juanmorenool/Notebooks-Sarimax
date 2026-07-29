@@ -1268,7 +1268,7 @@ def render_metricas_diagnostico(pruebas_df):
         return
     scores = obtener_scores_modelo(pruebas_df)
     score_global, _ = calcular_score_global(pruebas_df)
-    etiqueta_g, color_g, _ = clasificar_score_global(score_global)
+    etiqueta_g, color_g, _ = estilo_score_global(score_global)
     c0, c1, c2, c3 = st.columns(4)
     with c0:
         valor_g = f"{score_global:.1f}/10" if score_global is not None else "N/A"
