@@ -900,119 +900,630 @@ def _pdf_texto(pdf, txt, h=6, max_chars_palabra=40):
     except TypeError:
         pdf.multi_cell(0, h, seguro)
 
-def generar_pdf_metodologico(doc_data, ruta_imagen):
-    pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
 
-    # === PORTADA ===
-    pdf.add_page()
-    pdf.set_font("Helvetica", "B", 16)
-    pdf.cell(0, 10, "Documento Metodologico SARIMAX IFRS 9", ln=True, align="C")
-    pdf.set_font("Helvetica", "", 11)
-    pdf.cell(0, 8, f"Modelo: {doc_data.get('nombre_modelo', 'N/A')}", ln=True, align="C")
-    pdf.cell(0, 8, f"Fecha: {doc_data.get('fecha_generacion', 'N/A')}", ln=True, align="C")
-    pdf.cell(0, 8, f"Pais: {doc_data.get('meta_kpis', {}).get('pais', 'N/A')}", ln=True, align="C")
-    pdf.cell(0, 8, f"Cartera: {doc_data.get('meta_kpis', {}).get('cartera', 'N/A')}", ln=True, align="C")
-    score_num = doc_data.get('score_global_num')
-    score_clase = doc_data.get('score_global_clase', 'N/A')
-    score_txt = f"{score_num:.1f}/10 - {score_clase}" if score_num is not None else "N/A"
-    pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 10, f"Score Global: {score_txt}", ln=True, align="C")
-    pdf.ln(5)
+# =============================================================================
+# CONSTANTES DE TEXTO METODOLÓGICO (reportlab)
+# =============================================================================
 
-    # === CONFIGURACION ===
-    pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 8, "Configuracion del Motor", ln=True)
-    pdf.set_font("Helvetica", "", 9)
-    config = [
-        ("Pais", doc_data.get("meta_kpis", {}).get("pais", "N/A")),
-        ("Cartera", doc_data.get("meta_kpis", {}).get("cartera", "N/A")),
-        ("Tipo endogena", doc_data.get("meta_kpis", {}).get("tipo_endogena", "N/A")),
-        ("Modo endogena", doc_data.get("meta_kpis", {}).get("modo_endogena", "N/A")),
-        ("Ventana MM", str(doc_data.get("meta_kpis", {}).get("ventana_mm", "N/A"))),
-        ("VIF max", str(doc_data.get("vif_max", "N/A"))),
-        ("Rango FWL", f"{doc_data.get('fwl_min', 'N/A')} - {doc_data.get('fwl_max', 'N/A')}"),
-        ("Max exogenas", str(doc_data.get("max_exog", "N/A"))),
-        ("Top exportar", str(doc_data.get("top_exportar", "N/A"))),
-        ("Umbral sensibilidad", str(doc_data.get("umbral_sensibilidad", "N/A"))),
-        ("AR / MA", f"{doc_data.get('ar_count', 0)} / {doc_data.get('ma_count', 0)}"),
+TEXTO_METODOLOGIA_SARIMAX = (
+    "El modelo SARIMAX (Seasonal AutoRegressive Integrated Moving Average with "
+    "eXogenous regressors) es una extensión del modelo ARIMA que incorpora "
+    "componentes estacionales y variables exógenas. En el contexto de IFRS 9, se "
+    "utiliza para proyectar la variación de la cartera de crédito bajo diferentes "
+    "escenarios macroeconómicos (base, adverso y optimista). El modelo descompone "
+    "la serie histórica en componentes autorregresivos (AR), de medias móviles "
+    "(MA), diferenciación integrada (I) y efectos estacionales (S), permitiendo "
+    "capturar la dinámica temporal inherente a los datos. La inclusión de variables "
+    "exógenas (macroeconómicas y administrativas) permite vincular el comportamiento "
+    "de la cartera con el entorno económico, cumpliendo con el requisito de "
+    "forward-looking information establecido en la norma.\n\n"
+    "El motor de modelos SARIMAX implementado sigue un flujo estructurado en bloques:\n\n"
+    "1. PREPARACIÓN DE DATOS: Las variables exógenas se interpolan a frecuencia "
+    "mensual y se calculan variaciones porcentuales (para niveles/índices) o "
+    "diferencias absolutas (para tasas como inflación o desempleo), evitando "
+    "el 'blow-up' del pct_change cuando la serie cruza cero.\n\n"
+    "2. ESTACIONARIEDAD (Bloque 1): Se aplica la prueba Augmented Dickey-Fuller "
+    "(ADF) a cada exógena para encontrar el orden mínimo de diferenciación "
+    "(d) que la vuelve estacionaria. Cada exógena puede tener su propia d.\n\n"
+    "3. ENDÓGENA (Bloque 2): Se evalúan dos transformaciones posibles: "
+    "Original (total): la serie en su escala natural. "
+    "Logit: transformación logit(y) = ln(y/(1-y)), útil cuando la variable "
+    "está acotada entre 0 y 1 (ej. tasas de morosidad). "
+    "Se selecciona la opción que sea estacionaria con d ≤ 1.\n\n"
+    "4. LAGS (Bloque 3): Mediante correlograma cruzado entre la endógena "
+    "diferenciada y cada exógena diferenciada, se sugiere el rezago óptimo "
+    "para cada variable, respetando el signo económico esperado (positivo o "
+    "negativo) configurado por el analista.\n\n"
+    "5. COMBINACIONES (Bloque 5): Se generan todas las combinaciones posibles de: "
+    "subconjuntos de exógenas (máximo N por modelo), un lag por exógena (según Bloque 3), "
+    "y órdenes AR(p) y MA(q) candidatos. Se ajusta un SARIMAX(p,0,q) para cada combinación.\n\n"
+    "6. FILTRADO: Los modelos se filtran por VIF < VIF_MAX (multicolinealidad), "
+    "signos de coeficientes coherentes, sensibilidad entre escenarios, outliers, "
+    "significancia de al menos una exógena (p-value ≤ 0.05), y factor FWL dentro del rango configurado.\n\n"
+    "7. FORECAST (Bloque 6): Se proyecta cada modelo aceptado sobre los tres "
+    "escenarios (BAS/ADV/OPT), se revierte la diferenciación y, si aplica, "
+    "la transformación logit. Se aplica bloqueo de solapamiento para evitar "
+    "que escenarios laterales crucen al base.\n\n"
+    "8. EXPORTACIÓN (Bloque 8): Se exportan los TOP modelos a Excel, una hoja "
+    "por modelo, con trazabilidad completa: endógena, exógenas, FWL, "
+    "residuos, coeficientes y pruebas estadísticas."
+)
+
+# =============================================================================
+# FUNCIONES DE INTERPRETACIÓN DINÁMICA DE DIAGNÓSTICOS
+# =============================================================================
+
+def texto_ljungbox(score: str, p: float) -> str:
+    if score == "A":
+        return (
+            "No se detecta autocorrelación significativa en los residuos (p > 0.10). El "
+            "modelo ha capturado adecuadamente la estructura temporal de la serie, por lo "
+            "que no hay evidencia de patrones no explicados en los errores de predicción. "
+            "Esto valida que los componentes AR y MA seleccionados son suficientes para "
+            "modelar la dependencia temporal."
+        )
+    elif score == "B":
+        return (
+            "No existe evidencia concluyente de autocorrelación residual (0.05 < p ≤ 0.10). "
+            "Aunque el estadístico se acerca al umbral de significancia, el modelo "
+            "mantiene un comportamiento aceptable y no se requieren ajustes estructurales "
+            "inmediatos. Se recomienda monitorear en corridas posteriores."
+        )
+    elif score == "C":
+        return (
+            "Se detecta evidencia débil de autocorrelación en los residuos (p ≤ 0.05). "
+            "Esto sugiere que podría existir una estructura temporal no capturada por el "
+            "modelo actual. Se recomienda evaluar la inclusión de rezagos adicionales o "
+            "revisar la especificación ARMA (aumentar p o q)."
+        )
+    else:  # D
+        return (
+            "Se detecta autocorrelación significativa en los residuos (p ≤ 0.01). El "
+            "modelo NO está capturando adecuadamente la dinámica temporal de la serie, lo "
+            "que puede generar predicciones sesgadas e intervalos de confianza inválidos. "
+            "Se requiere reespecificación urgente del modelo (revisar órdenes AR/MA o "
+            "considerar estacionalidad)."
+        )
+
+def texto_jarquebera(score: str, p: float) -> str:
+    if score == "A":
+        return (
+            "Los residuos siguen una distribución normal (p > 0.10). Esto valida el uso "
+            "de intervalos de confianza estándar y garantiza la validez de las inferencias "
+            "estadísticas derivadas del modelo. Los errores no presentan asimetría ni "
+            "curtosis problemáticas."
+        )
+    elif score == "B":
+        return (
+            "No se encuentra evidencia concluyente de no-normalidad (0.05 < p ≤ 0.10). "
+            "La distribución de los errores es suficientemente simétrica para mantener la "
+            "confiabilidad de las proyecciones, aunque se sugiere monitoreo periódico."
+        )
+    elif score == "C":
+        return (
+            "Se detecta evidencia débil de no-normalidad en los residuos (p ≤ 0.05). La "
+            "presencia de asimetría o curtosis atípica puede afectar la precisión de los "
+            "intervalos de predicción extremos. Se sugiere monitorear especialmente los "
+            "escenarios adverso y optimista."
+        )
+    else:  # D
+        return (
+            "Los residuos presentan desviaciones significativas de la normalidad (p ≤ 0.01): "
+            "asimetría y/o curtosis extrema. Esto invalida los intervalos de confianza "
+            "clásicos y puede indicar la presencia de valores atípicos no modelados o una "
+            "especificación incorrecta. Se recomienda transformar la variable (ej. logit) "
+            "o utilizar métodos robustos."
+        )
+
+def texto_hetero(score: str, p: float) -> str:
+    if score == "A":
+        return (
+            "No se detecta heterocedasticidad (p > 0.10). La varianza de los residuos es "
+            "constante a lo largo del tiempo, cumpliendo con el supuesto de homocedasticidad "
+            "requerido para la inferencia válida del modelo. Los errores estándar de los "
+            "coeficientes son confiables."
+        )
+    elif score == "B":
+        return (
+            "No existe evidencia concluyente de varianza no constante (0.05 < p ≤ 0.10). "
+            "El modelo mantiene estabilidad en la dispersión de los errores a través de la "
+            "muestra. No se requieren correcciones adicionales."
+        )
+    elif score == "C":
+        return (
+            "Se detecta evidencia débil de heterocedasticidad (p ≤ 0.05). La varianza de "
+            "los errores presenta cambios moderados en el tiempo, lo que puede afectar la "
+            "eficiencia de los estimadores. Se sugiere considerar modelos ARCH/GARCH para "
+            "la volatilidad o utilizar errores estándar robustos (White)."
+        )
+    else:  # D
+        return (
+            "Se confirma heterocedasticidad significativa (p ≤ 0.01). La varianza de los "
+            "residuos NO es constante, lo que genera estimadores ineficientes y errores "
+            "estándar sesgados. Las proyecciones pueden subestimar o sobrestimar el riesgo "
+            "en diferentes períodos. Se requiere corrección: errores estándar robustos o "
+            "modelos de varianza condicional (ARCH/GARCH)."
+        )
+
+def clasificar_score_global(s: float) -> tuple:
+    """Retorna (clasificación, conclusión)"""
+    if s >= 7:
+        return (
+            "Bueno",
+            "El modelo presenta un desempeño general satisfactorio. Los diagnósticos "
+            "estadísticos indican que la especificación captura adecuadamente la dinámica "
+            "de la cartera y las proyecciones son confiables para la estimación de provisiones "
+            "bajo IFRS 9. Se recomienda su uso como modelo oficial de proyección."
+        )
+    elif s >= 5:
+        return (
+            "Regular",
+            "El modelo presenta un desempeño aceptable con áreas de mejora identificadas. "
+            "Aunque las proyecciones son utilizables, se recomienda monitorear los diagnósticos "
+            "marcados con score C o D en corridas posteriores y evaluar reespecificaciones "
+            "si la calidad del ajuste se deteriora."
+        )
+    else:
+        return (
+            "Deficiente",
+            "El modelo presenta problemas estadísticos significativos que comprometen la "
+            "confiabilidad de las proyecciones. Se recomienda NO utilizar este modelo como "
+            "salida oficial sin una reespecificación profunda que aborde los diagnósticos "
+            "con score D y, de ser posible, los score C."
+        )
+
+
+# =============================================================================
+# GENERADOR DE PDF CON REPORTLAB
+# =============================================================================
+
+def generar_pdf_metodologico(doc_data: dict, ruta_imagen: str) -> bytes:
+    """
+    Genera el documento metodológico completo en PDF usando reportlab.
+
+    Parámetros
+    ----------
+    doc_data : dict
+        Diccionario con toda la información del modelo (metadata, scores, exógenas, etc.)
+    ruta_imagen : str
+        Ruta al archivo PNG de la gráfica de variables exógenas.
+
+    Retorna
+    -------
+    bytes
+        Contenido binario del PDF listo para descarga.
+    """
+    import io
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.units import inch
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+        Image, PageBreak, KeepTogether
+    )
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
+    from datetime import datetime
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=72,
+        leftMargin=72,
+        topMargin=72,
+        bottomMargin=72
+    )
+
+    # -------------------------------------------------------------------------
+    # ESTILOS PERSONALIZADOS
+    # -------------------------------------------------------------------------
+    styles = getSampleStyleSheet()
+
+    # Paleta corporativa
+    VERDE_CORP = colors.HexColor("#2a7f3f")
+    ROJO_CORP = colors.HexColor("#b22222")
+    NARANJA_CORP = colors.HexColor("#e08a00")
+    GRIS_OSCURO = colors.HexColor("#333333")
+    GRIS_CLARO = colors.HexColor("#f5f5f5")
+    BLANCO = colors.white
+
+    estilo_titulo = ParagraphStyle(
+        "TituloDoc",
+        parent=styles["Heading1"],
+        fontSize=22,
+        leading=26,
+        textColor=VERDE_CORP,
+        alignment=TA_CENTER,
+        spaceAfter=20,
+        fontName="Helvetica-Bold"
+    )
+
+    estilo_subtitulo = ParagraphStyle(
+        "SubtituloDoc",
+        parent=styles["Heading2"],
+        fontSize=14,
+        leading=18,
+        textColor=GRIS_OSCURO,
+        alignment=TA_CENTER,
+        spaceAfter=30,
+        fontName="Helvetica"
+    )
+
+    estilo_seccion = ParagraphStyle(
+        "SeccionDoc",
+        parent=styles["Heading2"],
+        fontSize=16,
+        leading=20,
+        textColor=VERDE_CORP,
+        spaceBefore=20,
+        spaceAfter=12,
+        fontName="Helvetica-Bold",
+        borderWidth=0,
+        borderColor=VERDE_CORP,
+        borderPadding=5,
+        leftIndent=0
+    )
+
+    estilo_subseccion = ParagraphStyle(
+        "SubseccionDoc",
+        parent=styles["Heading3"],
+        fontSize=12,
+        leading=15,
+        textColor=GRIS_OSCURO,
+        spaceBefore=12,
+        spaceAfter=8,
+        fontName="Helvetica-Bold"
+    )
+
+    estilo_cuerpo = ParagraphStyle(
+        "CuerpoDoc",
+        parent=styles["BodyText"],
+        fontSize=10,
+        leading=14,
+        textColor=GRIS_OSCURO,
+        alignment=TA_JUSTIFY,
+        spaceAfter=10,
+        fontName="Helvetica"
+    )
+
+    estilo_nota = ParagraphStyle(
+        "NotaDoc",
+        parent=styles["BodyText"],
+        fontSize=9,
+        leading=12,
+        textColor=colors.grey,
+        alignment=TA_LEFT,
+        spaceAfter=8,
+        fontName="Helvetica-Oblique"
+    )
+
+    estilo_score_a = ParagraphStyle("ScoreA", parent=estilo_cuerpo, textColor=VERDE_CORP, fontName="Helvetica-Bold")
+    estilo_score_b = ParagraphStyle("ScoreB", parent=estilo_cuerpo, textColor=colors.HexColor("#c9a227"), fontName="Helvetica-Bold")
+    estilo_score_c = ParagraphStyle("ScoreC", parent=estilo_cuerpo, textColor=NARANJA_CORP, fontName="Helvetica-Bold")
+    estilo_score_d = ParagraphStyle("ScoreD", parent=estilo_cuerpo, textColor=ROJO_CORP, fontName="Helvetica-Bold")
+
+    def estilo_por_score(score: str):
+        return {"A": estilo_score_a, "B": estilo_score_b, "C": estilo_score_c, "D": estilo_score_d}.get(score, estilo_cuerpo)
+
+    # Helper para tablas
+    def tabla_estilo_base():
+        return TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), VERDE_CORP),
+            ("TEXTCOLOR", (0, 0), (-1, 0), BLANCO),
+            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 10),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 10),
+            ("BACKGROUND", (0, 1), (-1, -1), GRIS_CLARO),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.lightgrey),
+            ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+            ("FONTSIZE", (0, 1), (-1, -1), 9),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ])
+
+    story = []
+    meta = doc_data.get("metadata", {})
+    scores = doc_data.get("scores", {})
+    score_global = doc_data.get("score_global", 0)
+    clasificacion, conclusion_global = clasificar_score_global(score_global)
+    fecha_gen = datetime.now().strftime("%d/%m/%Y %H:%M")
+
+    # =====================================================================
+    # PORTADA
+    # =====================================================================
+    story.append(Spacer(1, 1.5 * inch))
+    story.append(Paragraph("Documento Metodológico", estilo_titulo))
+    story.append(Paragraph("Modelo SARIMAX — Proyección IFRS 9", estilo_subtitulo))
+    story.append(Spacer(1, 0.3 * inch))
+
+    datos_portada = [
+        ["Modelo seleccionado:", doc_data.get("nombre", "N/A")],
+        ["Fecha de generación:", fecha_gen],
+        ["País:", meta.get("pais", "N/A")],
+        ["Cartera:", meta.get("cartera", "N/A")],
+        ["Score global:", f"{score_global:.2f} / 10 — {clasificacion}"],
     ]
-    for k, v in config:
-        pdf.cell(60, 6, k, border=1)
-        pdf.cell(0, 6, str(v), border=1, ln=True)
-    pdf.ln(5)
+    tabla_portada = Table(datos_portada, colWidths=[2.2 * inch, 3.5 * inch])
+    tabla_portada.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (0, -1), GRIS_CLARO),
+        ("TEXTCOLOR", (0, 0), (-1, -1), GRIS_OSCURO),
+        ("ALIGN", (0, 0), (0, -1), "LEFT"),
+        ("ALIGN", (1, 0), (1, -1), "LEFT"),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTNAME", (1, 0), (1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, -1), 11),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.lightgrey),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    story.append(tabla_portada)
+    story.append(PageBreak())
 
-    # === EXOGENAS ===
-    pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 8, "Variables Exogenas", ln=True)
-    pdf.set_font("Helvetica", "", 9)
+    # =====================================================================
+    # SECCIÓN 1 — METODOLOGÍA SARIMAX
+    # =====================================================================
+    story.append(Paragraph("1. Metodología SARIMAX", estilo_seccion))
+    story.append(Paragraph(TEXTO_METODOLOGIA_SARIMAX, estilo_cuerpo))
+    story.append(PageBreak())
+
+    # =====================================================================
+    # SECCIÓN 2 — CONFIGURACIÓN DEL MOTOR
+    # =====================================================================
+    story.append(Paragraph("2. Configuración del Motor", estilo_seccion))
+
+    # Tabla de configuración
+    cfg_data = [
+        ["Parámetro", "Valor"],
+        ["País", meta.get("pais", "N/A")],
+        ["Cartera", meta.get("cartera", "N/A")],
+        ["Tipo de endógena", meta.get("tipo_endogena", "N/A")],
+        ["Modo de endógena", meta.get("modo_endogena", "N/A")],
+        ["Ventana media móvil", str(meta.get("ventana_mm", "N/A")) + " meses"],
+        ["VIF máximo permitido", str(meta.get("vif_max", "N/A"))],
+        ["Máx. exógenas por modelo", str(meta.get("max_exog", "N/A"))],
+        ["Top modelos exportados", str(meta.get("top_exportar", "N/A"))],
+        ["Órdenes AR candidatos", str(meta.get("valores_p", "N/A"))],
+        ["Órdenes MA candidatos", str(meta.get("valores_q", "N/A"))],
+        ["Máximo lags evaluados", str(meta.get("max_lags", "N/A"))],
+        ["Umbral de sensibilidad", str(meta.get("umbral_sensibilidad", "N/A"))],
+        ["Rango FWL mínimo", str(meta.get("fwl_min", "N/A"))],
+        ["Rango FWL máximo", str(meta.get("fwl_max", "N/A"))],
+        ["Trend del modelo", meta.get("trend_modelo", "N/A")],
+    ]
+    tabla_cfg = Table(cfg_data, colWidths=[2.5 * inch, 3.2 * inch])
+    tabla_cfg.setStyle(tabla_estilo_base())
+    story.append(tabla_cfg)
+    story.append(Spacer(1, 0.2 * inch))
+
+    # Glosarios
+    story.append(Paragraph("2.1 Factor FWL (Forward-Looking)", estilo_subseccion))
+    fwl_min = meta.get("fwl_min", "N/A")
+    fwl_max = meta.get("fwl_max", "N/A")
+    story.append(Paragraph(
+        f"El Factor FWL es el multiplicador escalar que se aplica sobre la proyección base "
+        f"para obtener las trayectorias adverso y optimista. El rango FWL define los límites "
+        f"mínimo y máximo dentro de los cuales puede oscilar este factor, garantizando que las "
+        f"proyecciones extremas no se desvíen de manera irrazonable respecto a la trayectoria base. "
+        f"RANGO FWL CONFIGURADO: {fwl_min} — {fwl_max}. "
+        f"Un rango más amplio implica mayor incertidumbre en los escenarios, mientras que un rango "
+        f"más estrecho refleja mayor confianza en la estabilidad de la cartera.",
+        estilo_cuerpo
+    ))
+
+    story.append(Paragraph("2.2 Tipo de endógena: Logit vs Total", estilo_subseccion))
+    tipo_endog = meta.get("tipo_endogena", "N/A")
+    if tipo_endog.lower() == "logit":
+        texto_tipo = (
+            "Logit: La variable endógena se transforma mediante la función logit antes de la estimación. "
+            "Esto es útil cuando la variable está acotada entre 0 y 1 (o 0% y 100%), ya que evita que el modelo "
+            "proyecte valores fuera del rango lógico. Los resultados deben retransformarse mediante la inversa "
+            "del logit (exp(x)/(1+exp(x))) para su interpretación en la escala original."
+        )
+    else:
+        texto_tipo = (
+            "Total: La variable endógena se modela en su escala original (por ejemplo, "
+            "porcentaje de morosidad o tasa de variación). Los coeficientes se interpretan "
+            "directamente en unidades de la variable dependiente."
+        )
+    story.append(Paragraph(f"TIPO ENDÓGENA CONFIGURADO: {tipo_endog}. {texto_tipo}", estilo_cuerpo))
+
+    story.append(Paragraph("2.3 Modo de endógena: Actual vs Media Móvil", estilo_subseccion))
+    modo_endog = meta.get("modo_endogena", "N/A")
+    ventana_mm = meta.get("ventana_mm", "N/A")
+    if str(modo_endog).lower() in ["media_movil", "media móvil", "media movil"]:
+        texto_modo = (
+            "Media Móvil: La endógena se calcula como el promedio móvil de los últimos N meses. "
+            "Este suavizado reduce el ruido de corto plazo y ayuda a identificar tendencias subyacentes, "
+            "siendo preferible cuando la serie presenta picos atípicos o alta frecuencia de variaciones puntuales."
+        )
+    else:
+        texto_modo = (
+            "Actual: El modelo utiliza el valor observado de la serie en cada período como variable dependiente. "
+            "Es el enfoque más directo y se recomienda cuando la serie presenta baja volatilidad de corto plazo."
+        )
+    story.append(Paragraph(f"MODO CONFIGURADO: {modo_endog}. VENTANA MEDIA MÓVIL: {ventana_mm} meses. {texto_modo}", estilo_cuerpo))
+
+    story.append(Paragraph("2.4 Umbrales de sensibilidad", estilo_subseccion))
+    umbral_sens = meta.get("umbral_sensibilidad", "N/A")
+    story.append(Paragraph(
+        f"Los umbrales de sensibilidad definen los límites de variación aceptables para los coeficientes "
+        f"de las variables exógenas ante shocks en las proyecciones. Si el cambio en una macro excede el umbral "
+        f"definido, el modelo alerta sobre posible inestabilidad estructural. "
+        f"UMBRAL DE SENSIBILIDAD CONFIGURADO: {umbral_sens}. "
+        f"Nota: Este parámetro debe verificarse contra la configuración vigente del motor de modelos.",
+        estilo_cuerpo
+    ))
+
+    story.append(Paragraph("2.5 Parámetros del motor", estilo_subseccion))
+    story.append(Paragraph(
+        f"Los siguientes parámetros fueron utilizados en la corrida que generó este modelo: "
+        f"VIF máximo permitido: {meta.get('vif_max', 'N/A')}. "
+        f"Máximo de exógenas por modelo: {meta.get('max_exog', 'N/A')}. "
+        f"Top de modelos a exportar: {meta.get('top_exportar', 'N/A')}. "
+        f"Órdenes AR candidatos: {meta.get('valores_p', 'N/A')}. "
+        f"Órdenes MA candidatos: {meta.get('valores_q', 'N/A')}. "
+        f"Máximo de lags evaluados: {meta.get('max_lags', 'N/A')}. "
+        f"Significancia mínima de exógenas: p ≤ 0.05. "
+        f"Trend del modelo: {meta.get('trend_modelo', 'N/A')}.",
+        estilo_cuerpo
+    ))
+    story.append(PageBreak())
+
+    # =====================================================================
+    # SECCIÓN 3 — VARIABLES UTILIZADAS
+    # =====================================================================
+    story.append(Paragraph("3. Variables Utilizadas", estilo_seccion))
+
     exogenas = doc_data.get("exogenas", [])
     if exogenas:
-        pdf.set_fill_color(42, 127, 63)
-        pdf.set_text_color(255, 255, 255)
-        pdf.cell(80, 7, "Variable", border=1, fill=True)
-        pdf.cell(40, 7, "P-valor", border=1, fill=True)
-        pdf.cell(40, 7, "Estado", border=1, fill=True, ln=True)
-        pdf.set_text_color(0, 0, 0)
-        for row in exogenas:
-            p = row.get("p_value")
-            ptxt = f"{p:.4f}" if p is not None else "N/A"
-            pdf.cell(80, 6, str(row.get("exogena", "")), border=1)
-            pdf.cell(40, 6, ptxt, border=1)
-            pdf.cell(40, 6, str(row.get("estado", "")), border=1, ln=True)
+        exo_data = [["Variable exógena", "Coeficiente", "p-value", "Significancia"]]
+        for nombre, coef, pval, sig in exogenas:
+            exo_data.append([
+                str(nombre),
+                f"{coef:.6f}" if isinstance(coef, (int, float)) else str(coef),
+                f"{pval:.4f}" if isinstance(pval, (int, float)) else str(pval),
+                "Sí" if sig else "No"
+            ])
+        tabla_exo = Table(exo_data, colWidths=[2.4 * inch, 1.3 * inch, 1.1 * inch, 1.1 * inch])
+        tabla_exo.setStyle(tabla_estilo_base())
+        story.append(tabla_exo)
     else:
-        pdf.cell(0, 6, "Sin exogenas disponibles.", ln=True)
-    pdf.ln(5)
+        story.append(Paragraph("No se encontraron variables exógenas significativas en este modelo.", estilo_cuerpo))
 
-    # === GRAFICA ===
+    story.append(Spacer(1, 0.15 * inch))
+    story.append(Paragraph("Especificación ARMA", estilo_subseccion))
+    ar_count = doc_data.get("ar_count", 0)
+    ma_count = doc_data.get("ma_count", 0)
+    obs = doc_data.get("observaciones", "N/A")
+    story.append(Paragraph(
+        f"Términos autorregresivos (AR): {ar_count}. "
+        f"Términos de media móvil (MA): {ma_count}. "
+        f"Observaciones utilizadas en la estimación: {obs}.",
+        estilo_cuerpo
+    ))
+    story.append(PageBreak())
+
+    # =====================================================================
+    # SECCIÓN 4 — GRÁFICA DE VARIABLES EXÓGENAS
+    # =====================================================================
+    story.append(Paragraph("4. Gráfica de Variables Exógenas", estilo_seccion))
+    story.append(Paragraph(
+        "La siguiente figura muestra la evolución histórica y proyectada de las variables exógenas "
+        "incluidas en el modelo, bajo los tres escenarios macroeconómicos (Base, Adverso y Optimista). "
+        "La línea vertical indica el punto de corte entre el período histórico y el de proyección.",
+        estilo_cuerpo
+    ))
+    story.append(Spacer(1, 0.15 * inch))
+
     if ruta_imagen and os.path.exists(ruta_imagen):
-        pdf.set_font("Helvetica", "B", 12)
-        pdf.cell(0, 8, "Grafica de Macros (Exogenas)", ln=True)
-        try:
-            pdf.image(ruta_imagen, x=10, w=190)
-            pdf.ln(5)
-        except Exception:
-            pdf.set_font("Helvetica", "", 9)
-            pdf.cell(0, 6, "No fue posible insertar la grafica.", ln=True)
-
-    # === DIAGNOSTICOS (nueva pagina) ===
-    pdf.add_page()
-    pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 8, "Diagnosticos", ln=True)
-    pdf.set_font("Helvetica", "", 9)
-    diagnosticos = doc_data.get("diagnosticos", [])
-    if diagnosticos:
-        pdf.set_fill_color(42, 127, 63)
-        pdf.set_text_color(255, 255, 255)
-        pdf.cell(45, 7, "Prueba", border=1, fill=True)
-        pdf.cell(25, 7, "Score", border=1, fill=True)
-        pdf.cell(35, 7, "Estadistico", border=1, fill=True)
-        pdf.cell(30, 7, "P-valor", border=1, fill=True)
-        pdf.cell(0, 7, "Interpretacion", border=1, fill=True, ln=True)
-        pdf.set_text_color(0, 0, 0)
-        for d in diagnosticos:
-            pdf.cell(45, 6, str(d.get("prueba", ""))[:22], border=1)
-            pdf.cell(25, 6, str(d.get("score", "")), border=1)
-            pdf.cell(35, 6, fmt_pvalor(d.get("estadistico")), border=1)
-            pdf.cell(30, 6, fmt_pvalor(d.get("p_value")), border=1)
-            # Texto corto, truncado a 40 chars para evitar overflow
-            interp = str(d.get("interpretacion", ""))[:40]
-            pdf.cell(0, 6, interp, border=1, ln=True)
+        img = Image(ruta_imagen, width=6.5 * inch, height=4 * inch)
+        story.append(img)
     else:
-        pdf.cell(0, 6, "Sin pruebas de diagnostico disponibles.", ln=True)
+        story.append(Paragraph("[Gráfica no disponible]", estilo_nota))
 
-    pdf.ln(5)
-    pdf.set_font("Helvetica", "B", 11)
-    pdf.cell(0, 8, f"Conclusion: {score_txt}", ln=True)
-    pdf.set_font("Helvetica", "", 9)
-    conclusion = str(doc_data.get("score_global_conclusion", ""))[:200]
-    pdf.cell(0, 6, conclusion, ln=True)
+    story.append(PageBreak())
 
-    pdf_raw = pdf.output(dest="S")
-    if isinstance(pdf_raw, (bytes, bytearray)):
-        return bytes(pdf_raw)
-    return str(pdf_raw).encode("latin-1", "ignore")
+    # =====================================================================
+    # SECCIÓN 5 — DIAGNÓSTICOS E INTERPRETACIÓN
+    # =====================================================================
+    story.append(Paragraph("5. Diagnósticos e Interpretación", estilo_seccion))
+    story.append(Paragraph(
+        "A continuación se presentan los resultados de las pruebas estadísticas aplicadas a los residuos "
+        "del modelo, junto con su interpretación metodológica. Cada prueba recibe un score de A a D, "
+        "donde A indica cumplimiento óptimo y D indica incumplimiento significativo.",
+        estilo_cuerpo
+    ))
+    story.append(Spacer(1, 0.1 * inch))
 
+    # Ljung-Box
+    lb = scores.get("ljung_box", {})
+    lb_score = lb.get("score", "N/A")
+    lb_p = lb.get("p_valor", 0)
+    lb_stat = lb.get("estadistico", 0)
+    story.append(Paragraph(f"5.1 Ljung-Box — Autocorrelación de residuos (Score: {lb_score})", estilo_subseccion))
+    story.append(Paragraph(f"Estadístico: {lb_stat:.4f}  |  p-valor: {lb_p:.4f}", estilo_nota))
+    story.append(Paragraph(texto_ljungbox(lb_score, lb_p), estilo_por_score(lb_score)))
+    story.append(Spacer(1, 0.1 * inch))
+
+    # Jarque-Bera
+    jb = scores.get("jarque_bera", {})
+    jb_score = jb.get("score", "N/A")
+    jb_p = jb.get("p_valor", 0)
+    jb_stat = jb.get("estadistico", 0)
+    story.append(Paragraph(f"5.2 Jarque-Bera — Normalidad de residuos (Score: {jb_score})", estilo_subseccion))
+    story.append(Paragraph(f"Estadístico: {jb_stat:.4f}  |  p-valor: {jb_p:.4f}", estilo_nota))
+    story.append(Paragraph(texto_jarquebera(jb_score, jb_p), estilo_por_score(jb_score)))
+    story.append(Spacer(1, 0.1 * inch))
+
+    # Heterocedasticidad
+    ht = scores.get("heterocedasticidad", {})
+    ht_score = ht.get("score", "N/A")
+    ht_p = ht.get("p_valor", 0)
+    ht_stat = ht.get("estadistico", 0)
+    story.append(Paragraph(f"5.3 Heterocedasticidad — ARCH/LM (Score: {ht_score})", estilo_subseccion))
+    story.append(Paragraph(f"Estadístico: {ht_stat:.4f}  |  p-valor: {ht_p:.4f}", estilo_nota))
+    story.append(Paragraph(texto_hetero(ht_score, ht_p), estilo_por_score(ht_score)))
+    story.append(PageBreak())
+
+    # =====================================================================
+    # SECCIÓN 6 — SCORE GLOBAL Y CONCLUSIÓN
+    # =====================================================================
+    story.append(Paragraph("6. Score Global y Conclusión", estilo_seccion))
+
+    # Tabla resumen de scores
+    resumen_data = [
+        ["Prueba", "Score", "p-valor", "Estadístico"],
+        ["Ljung-Box", lb_score, f"{lb_p:.4f}", f"{lb_stat:.4f}"],
+        ["Jarque-Bera", jb_score, f"{jb_p:.4f}", f"{jb_stat:.4f}"],
+        ["Heterocedasticidad", ht_score, f"{ht_p:.4f}", f"{ht_stat:.4f}"],
+        ["Score Global Ponderado", "", "", f"{score_global:.2f} / 10"],
+    ]
+    tabla_resumen = Table(resumen_data, colWidths=[2.2 * inch, 1.0 * inch, 1.2 * inch, 1.3 * inch])
+    tabla_resumen.setStyle(tabla_estilo_base())
+    story.append(tabla_resumen)
+    story.append(Spacer(1, 0.2 * inch))
+
+    # Clasificación con color
+    if clasificacion == "Bueno":
+        color_clas = VERDE_CORP
+    elif clasificacion == "Regular":
+        color_clas = NARANJA_CORP
+    else:
+        color_clas = ROJO_CORP
+
+    estilo_clas = ParagraphStyle(
+        "ClasificacionDoc",
+        parent=estilo_seccion,
+        textColor=color_clas,
+        alignment=TA_CENTER,
+        fontSize=18,
+        spaceAfter=12
+    )
+    story.append(Paragraph(f"Clasificación: {clasificacion}", estilo_clas))
+    story.append(Paragraph(f"Score global: {score_global:.2f} / 10", estilo_subseccion))
+    story.append(Spacer(1, 0.1 * inch))
+    story.append(Paragraph("Conclusión", estilo_subseccion))
+    story.append(Paragraph(conclusion_global, estilo_cuerpo))
+
+    # Nota final
+    story.append(Spacer(1, 0.3 * inch))
+    story.append(Paragraph(
+        "Este documento fue generado automáticamente por el dashboard SARIMAX IFRS 9. "
+        "Los resultados deben ser validados por el equipo de modelos de riesgo antes de su uso oficial.",
+        estilo_nota
+    ))
+
+    # Construir PDF
+    doc.build(story)
+    pdf_bytes = buffer.getvalue()
+    buffer.close()
+    return pdf_bytes
 
 def generar_excel_metodologico(doc_data, ruta_imagen):
     wb = openpyxl.Workbook()
