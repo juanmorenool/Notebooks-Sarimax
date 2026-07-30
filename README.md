@@ -34,7 +34,6 @@ El sistema permite:
 - **Generar** documentación metodológica automática en **PDF** (ReportLab) y **Excel** (openpyxl) con gráficas estáticas (matplotlib).
 - **Configurar** y descargar notebooks Jupyter listos para ejecutar en Google Colab.
 
-El diseño sigue una **paleta corporativa bancaria** (navy, azul, verde, rojo) con componentes visuales personalizados (KPI cards, pills, badges, tablas estilizadas) y atajos de teclado para navegación rápida.
 
 ---
 
@@ -315,5 +314,5 @@ Proyecto interno — Uso exclusivo del equipo de Modelos de Riesgo / IFRS 9.
 ---
 
 >   
-> **Versión**:  V 8.0 2026 
+> **Versión**:  V 38.0 2026 
 > **Contexto**: Provisión de cartera bajo NIIF 9 / IFRS 9 — Modelos SARIMAX con variables macroeconómicas.
