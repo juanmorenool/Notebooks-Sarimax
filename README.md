@@ -307,12 +307,5 @@ fpdf>=1.7
 
 ---
 
-## Licencia
-
-Proyecto interno — Uso exclusivo del equipo de Modelos de Riesgo / IFRS 9.
-
----
-
->   
 > **Versión**:  V 38.0 2026 
 > **Contexto**: Provisión de cartera bajo NIIF 9 / IFRS 9 — Modelos SARIMAX con variables macroeconómicas.
