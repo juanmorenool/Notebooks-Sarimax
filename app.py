@@ -2990,7 +2990,7 @@ st.markdown(f"""
 <div style="height:1px;background:{BORDER};margin:12px 0 16px;"></div>
 """, unsafe_allow_html=True)
 
-tab_gen, tab_dash = st.tabs(["Generador", "Dashboard"])
+tab_gen, tab_dash, tab_concat = st.tabs(["Generador", "Dashboard", "Concatenador"])
 
 # =========================================================================
 # TAB: GENERADOR
@@ -3537,3 +3537,24 @@ with tab_dash:
                     if st.button("Siguiente", disabled=current_idx == len(modelos_list) - 1, key="btn_next_real", use_container_width=True):
                         st.session_state.pending_modelo = modelos_list[current_idx + 1]
                         st.rerun()
+
+# =========================================================================
+# TAB: CONCATENADOR
+# =========================================================================
+with tab_concat:
+    from ui_concatenador import render_concatenador
+
+    render_concatenador(
+        NAVY=NAVY,
+        BLUE=BLUE,
+        GREEN=GREEN,
+        RED=RED,
+        GRAY=GRAY,
+        LTGRAY=LTGRAY,
+        TEXT=TEXT,
+        MUTED=MUTED,
+        BG=BG,
+        WHITE=WHITE,
+        BORDER=BORDER,
+        TINT=TINT
+    )
