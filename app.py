@@ -1374,8 +1374,11 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
         ["Fecha de generación:", fecha_gen],
         ["País:", meta.get("pais", "N/A")],
         ["Cartera:", meta.get("cartera", "N/A")],
-        ["Score global:", f"{score_global:.2f} / 10 — {clasificacion}"],
     ]
+    if score_global is not None and score_global >= 7:
+        datos_portada.append(["Score global:", f"{score_global:.2f} / 10 — {clasificacion}"])
+    else:
+        datos_portada.append(["Score global:", "N/A — Modelo no califica como robusto"])
     tabla_portada = Table(datos_portada, colWidths=[2.2 * inch, 3.5 * inch])
     tabla_portada.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (0, -1), GRIS_CLARO),
@@ -1443,8 +1446,9 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
         ["Ljung-Box", lb.get("score", "N/A"), fmt_num(lb.get("p_value")), fmt_num(lb.get("estadistico"))],
         ["Jarque-Bera", jb.get("score", "N/A"), fmt_num(jb.get("p_value")), fmt_num(jb.get("estadistico"))],
         ["Heterocedasticidad", ht.get("score", "N/A"), fmt_num(ht.get("p_value")), fmt_num(ht.get("estadistico"))],
-        ["Score Global Ponderado", "", "", f"{score_global:.2f} / 10"],
     ]
+    if score_global is not None and score_global >= 7:
+        diag_resumen.append(["Score Global Ponderado", "", "", f"{score_global:.2f} / 10"])
     tabla_diag = Table(diag_resumen, colWidths=[2.2 * inch, 1.0 * inch, 1.2 * inch, 1.3 * inch])
     tabla_diag.setStyle(tabla_estilo_base())
     story.append(tabla_diag)
@@ -1483,8 +1487,11 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
         ["Términos MA", str(ma_count)],
         ["Variables exógenas", str(exo_sig_count)],
         ["Observaciones", str(observaciones)],
-        ["Score global", f"{score_global:.2f} / 10 — {clasificacion}"],
     ]
+    if score_global is not None and score_global >= 7:
+        struct_data.append(["Score global", f"{score_global:.2f} / 10 — {clasificacion}"])
+    else:
+        struct_data.append(["Score global", "N/A — No califica como robusto"])
     tabla_struct = Table(struct_data, colWidths=[2.5 * inch, 3.2 * inch])
     tabla_struct.setStyle(tabla_estilo_base())
     story.append(tabla_struct)
@@ -1847,78 +1854,92 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
     story.append(PageBreak())
 
     # =====================================================================
-    # SECCIÓN 6 — SCORE GLOBAL Y CONCLUSIÓN
+    # SECCIÓN 6 — SCORE GLOBAL Y CONCLUSIÓN (solo si el modelo califica como BUENO)
     # =====================================================================
-    story.append(Paragraph("6. Score Global y Conclusión", estilo_seccion))
+    if score_global is not None and score_global >= 7:
+        story.append(Paragraph("6. Score Global y Conclusión", estilo_seccion))
 
-    story.append(Paragraph(
-        "El score global es una métrica ponderada que resume la calidad diagnóstica del modelo en una "
-        "escala de 0 a 10. Se construye a partir de los scores individuales (A, B, C, D) de las tres pruebas "
-        "estadísticas aplicadas a los residuos, siguiendo los siguientes pasos:",
-        estilo_cuerpo
-    ))
-    story.append(Paragraph(
-        "<b>Paso 1 — Score individual por prueba:</b> Cada prueba recibe una letra según su p-valor. "
-        "Para Ljung-Box y Heterocedasticidad: A (p > 0.10), B (0.05 < p ≤ 0.10), C (0.01 < p ≤ 0.05), D (p ≤ 0.01). "
-        "Para Jarque-Bera se aplican los mismos umbrales. A indica cumplimiento óptimo, D indica incumplimiento significativo.",
-        estilo_cuerpo
-    ))
-    story.append(Paragraph(
-        "<b>Paso 2 — Conversión numérica:</b> Cada letra se convierte a un valor numérico: A = 10.0, B = 7.5, C = 5.0, D = 2.5. "
-        "Esta escala refleja que un score C ya representa una señal de alerta que requiere monitoreo, mientras que D indica "
-        "un problema estadístico que compromete la validez del modelo.",
-        estilo_cuerpo
-    ))
-    story.append(Paragraph(
-        "<b>Paso 3 — Ponderación:</b> Los tres scores numéricos se combinan con pesos que reflejan la importancia relativa "
-        "de cada diagnóstico para la robustez del modelo SARIMAX: Ljung-Box (autocorrelación de residuos) pesa 40%; "
-        "Jarque-Bera (normalidad de residuos) pesa 30%; y Heterocedasticidad (varianza constante) pesa 30%. "
-        "La fórmula es: <i>Score Global = 0.40 × Score_Ljung + 0.30 × Score_Jarque + 0.30 × Score_Hetero</i>.",
-        estilo_cuerpo
-    ))
-    story.append(Paragraph(
-        "<b>Paso 4 — Clasificación:</b> El resultado final se interpreta así: ≥ 7.0 = BUENO (modelo robusto para uso oficial); "
-        "5.0 – 6.9 = REGULAR (utilizable con seguimiento); < 5.0 = DEFICIENTE (requiere reespecificación antes de uso oficial). "
-        "Esta clasificación permite al equipo de modelos de riesgo tomar decisiones informadas sobre la selección final.",
-        estilo_cuerpo
-    ))
-    story.append(Spacer(1, 0.1 * inch))
+        story.append(Paragraph(
+            "El score global es una métrica ponderada que resume la calidad diagnóstica del modelo en una "
+            "escala de 0 a 10. Se construye a partir de los scores individuales (A, B, C, D) de las tres pruebas "
+            "estadísticas aplicadas a los residuos, siguiendo los siguientes pasos:",
+            estilo_cuerpo
+        ))
+        story.append(Paragraph(
+            "<b>Paso 1 — Score individual por prueba:</b> Cada prueba recibe una letra según su p-valor. "
+            "Para Ljung-Box y Heterocedasticidad: A (p > 0.10), B (0.05 < p ≤ 0.10), C (0.01 < p ≤ 0.05), D (p ≤ 0.01). "
+            "Para Jarque-Bera se aplican los mismos umbrales. A indica cumplimiento óptimo, D indica incumplimiento significativo.",
+            estilo_cuerpo
+        ))
+        story.append(Paragraph(
+            "<b>Paso 2 — Conversión numérica:</b> Cada letra se convierte a un valor numérico: A = 10.0, B = 7.5, C = 5.0, D = 2.5. "
+            "Esta escala refleja que un score C ya representa una señal de alerta que requiere monitoreo, mientras que D indica "
+            "un problema estadístico que compromete la validez del modelo.",
+            estilo_cuerpo
+        ))
+        story.append(Paragraph(
+            "<b>Paso 3 — Ponderación:</b> Los tres scores numéricos se combinan con pesos que reflejan la importancia relativa "
+            "de cada diagnóstico para la robustez del modelo SARIMAX: Ljung-Box (autocorrelación de residuos) pesa 40%; "
+            "Jarque-Bera (normalidad de residuos) pesa 30%; y Heterocedasticidad (varianza constante) pesa 30%. "
+            "La fórmula es: <i>Score Global = 0.40 × Score_Ljung + 0.30 × Score_Jarque + 0.30 × Score_Hetero</i>.",
+            estilo_cuerpo
+        ))
+        story.append(Paragraph(
+            "<b>Paso 4 — Clasificación:</b> El resultado final se interpreta así: ≥ 7.0 = BUENO (modelo robusto para uso oficial); "
+            "5.0 – 6.9 = REGULAR (utilizable con seguimiento); < 5.0 = DEFICIENTE (requiere reespecificación antes de uso oficial). "
+            "Esta clasificación permite al equipo de modelos de riesgo tomar decisiones informadas sobre la selección final.",
+            estilo_cuerpo
+        ))
+        story.append(Spacer(1, 0.1 * inch))
 
-    resumen_data = [
-        ["Prueba", "Score", "p-valor", "Estadístico"],
-        ["Ljung-Box", lb_score, fmt_num(lb_p), fmt_num(lb_stat)],
-        ["Jarque-Bera", jb_score, fmt_num(jb_p), fmt_num(jb_stat)],
-        ["Heterocedasticidad", ht_score, fmt_num(ht_p), fmt_num(ht_stat)],
-        ["Score Global Ponderado", "", "", f"{score_global:.2f} / 10"],
-    ]
-    tabla_resumen = Table(resumen_data, colWidths=[2.2 * inch, 1.0 * inch, 1.2 * inch, 1.3 * inch])
-    tabla_resumen.setStyle(tabla_estilo_base())
-    story.append(tabla_resumen)
-    story.append(Spacer(1, 0.2 * inch))
+        resumen_data = [
+            ["Prueba", "Score", "p-valor", "Estadístico"],
+            ["Ljung-Box", lb_score, fmt_num(lb_p), fmt_num(lb_stat)],
+            ["Jarque-Bera", jb_score, fmt_num(jb_p), fmt_num(jb_stat)],
+            ["Heterocedasticidad", ht_score, fmt_num(ht_p), fmt_num(ht_stat)],
+            ["Score Global Ponderado", "", "", f"{score_global:.2f} / 10"],
+        ]
+        tabla_resumen = Table(resumen_data, colWidths=[2.2 * inch, 1.0 * inch, 1.2 * inch, 1.3 * inch])
+        tabla_resumen.setStyle(tabla_estilo_base())
+        story.append(tabla_resumen)
+        story.append(Spacer(1, 0.2 * inch))
 
-    clas_norm = str(clasificacion).upper()
-    if clas_norm == "BUENO":
-        color_clas = VERDE_CORP
-    elif clas_norm == "REGULAR":
-        color_clas = AMBAR_CORP
+        clas_norm = str(clasificacion).upper()
+        if clas_norm == "BUENO":
+            color_clas = VERDE_CORP
+        elif clas_norm == "REGULAR":
+            color_clas = AMBAR_CORP
+        else:
+            color_clas = ROJO_CORP
+
+        estilo_clas = ParagraphStyle(
+            "ClasificacionDoc",
+            parent=estilo_seccion,
+            textColor=color_clas,
+            alignment=TA_CENTER,
+            fontSize=18,
+            spaceAfter=12
+        )
+        story.append(Paragraph(f"Clasificación: {clasificacion}", estilo_clas))
+        story.append(Paragraph(f"Score global: {score_global:.2f} / 10", estilo_subseccion))
+        story.append(Spacer(1, 0.1 * inch))
+        story.append(Paragraph("Conclusión", estilo_subseccion))
+        story.append(Paragraph(conclusion_global, estilo_cuerpo))
+
+        story.append(Spacer(1, 0.3 * inch))
     else:
-        color_clas = ROJO_CORP
+        # Modelo no califica como BUENO: se omite la sección de score
+        story.append(Paragraph("6. Score Global y Conclusión", estilo_seccion))
+        story.append(Paragraph(
+            "El modelo no alcanza el umbral mínimo de robustez estadística (score global < 7.0). "
+            "Por esta razón, la evaluación detallada del score global y la conclusión oficial de calidad "
+            "no se incluyen en este documento. Se recomienda revisar los diagnósticos individuales, "
+            "reevaluar la especificación del modelo y considerar transformaciones adicionales antes "
+            "de su uso en provisiones IFRS 9.",
+            estilo_cuerpo
+        ))
+        story.append(Spacer(1, 0.3 * inch))
 
-    estilo_clas = ParagraphStyle(
-        "ClasificacionDoc",
-        parent=estilo_seccion,
-        textColor=color_clas,
-        alignment=TA_CENTER,
-        fontSize=18,
-        spaceAfter=12
-    )
-    story.append(Paragraph(f"Clasificación: {clasificacion}", estilo_clas))
-    story.append(Paragraph(f"Score global: {score_global:.2f} / 10", estilo_subseccion))
-    story.append(Spacer(1, 0.1 * inch))
-    story.append(Paragraph("Conclusión", estilo_subseccion))
-    story.append(Paragraph(conclusion_global, estilo_cuerpo))
-
-    story.append(Spacer(1, 0.3 * inch))
     story.append(Paragraph(
         "Este documento fue generado automáticamente por el dashboard SARIMAX IFRS 9. "
         "Los resultados deben ser validados por el equipo de modelos de riesgo antes de su uso oficial.",
