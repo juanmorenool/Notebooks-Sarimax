@@ -1377,6 +1377,8 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
     ]
     if score_global is not None and score_global >= 7:
         datos_portada.append(["Score global:", f"{score_global:.2f} / 10 — {clasificacion}"])
+    else:
+        datos_portada.append(["Score global:", "N/A — Modelo no califica como robusto"])
     tabla_portada = Table(datos_portada, colWidths=[2.2 * inch, 3.5 * inch])
     tabla_portada.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (0, -1), GRIS_CLARO),
@@ -1488,6 +1490,8 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
     ]
     if score_global is not None and score_global >= 7:
         struct_data.append(["Score global", f"{score_global:.2f} / 10 — {clasificacion}"])
+    else:
+        struct_data.append(["Score global", "N/A — No califica como robusto"])
     tabla_struct = Table(struct_data, colWidths=[2.5 * inch, 3.2 * inch])
     tabla_struct.setStyle(tabla_estilo_base())
     story.append(tabla_struct)
@@ -1922,6 +1926,18 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
         story.append(Paragraph("Conclusión", estilo_subseccion))
         story.append(Paragraph(conclusion_global, estilo_cuerpo))
 
+        story.append(Spacer(1, 0.3 * inch))
+    else:
+        # Modelo no califica como BUENO: se omite la sección de score
+        story.append(Paragraph("6. Score Global y Conclusión", estilo_seccion))
+        story.append(Paragraph(
+            "El modelo no alcanza el umbral mínimo de robustez estadística (score global < 7.0). "
+            "Por esta razón, la evaluación detallada del score global y la conclusión oficial de calidad "
+            "no se incluyen en este documento. Se recomienda revisar los diagnósticos individuales, "
+            "reevaluar la especificación del modelo y considerar transformaciones adicionales antes "
+            "de su uso en provisiones IFRS 9.",
+            estilo_cuerpo
+        ))
         story.append(Spacer(1, 0.3 * inch))
 
     story.append(Paragraph(
