@@ -101,7 +101,7 @@ def concatenar_impactos(dataframes_dict: dict,
     Args:
         dataframes_dict: diccionario {nombre_archivo: df_procesado, ...}
         pais: código de país (para validación, opcional)
-        fecha_format: formato de la columna 'date'
+        fecha_format: formato de la columna 'date' (default: "%d%b%Y")
     
     Returns:
         DataFrame consolidado, ordenado por KEYS_MERGE
@@ -127,7 +127,7 @@ def concatenar_impactos(dataframes_dict: dict,
         frames
     )
     
-    # Convertir fecha
+    # Convertir fecha usando el formato especificado
     df_result["date"] = pd.to_datetime(df_result["date"], format=fecha_format)
     
     # Ordenar
@@ -149,13 +149,16 @@ def generar_csv_bytes(df: pd.DataFrame) -> bytes:
 # =============================================================================
 
 def procesar_archivos_impacto(archivos_cargados: list, 
-                               pais: str = "CO") -> dict:
+                               pais: str = "CO",
+                               fecha_format: str = "%d%b%Y") -> dict:
     """
     Flujo completo: recibe archivos, los procesa, los concatena.
     
     Args:
         archivos_cargados: lista de UploadedFile de Streamlit
-        pais: código de país para validación
+        pais: código de país para validación (default: "CO")
+        fecha_format: formato de la fecha en los archivos CSV (default: "%d%b%Y")
+                     Ejemplos: "%Y-%m-%d" para '2026-03-01', "%d/%m/%Y" para '01/03/26'
     
     Returns:
         Diccionario con:
@@ -193,7 +196,12 @@ def procesar_archivos_impacto(archivos_cargados: list,
     df_final = None
     if dataframes_dict:
         try:
-            df_final = concatenar_impactos(dataframes_dict, pais=pais)
+            # PROPAGACIÓN DE fecha_format A concatenar_impactos
+            df_final = concatenar_impactos(
+                dataframes_dict, 
+                pais=pais,
+                fecha_format=fecha_format  # ← Se pasa el parámetro aquí
+            )
         except Exception as e:
             errores.append(f"Error en concatenación: {str(e)}")
     else:
