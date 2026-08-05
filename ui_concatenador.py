@@ -73,7 +73,7 @@ def render_concatenador(NAVY, BLUE, GREEN, RED, GRAY, LTGRAY, TEXT, MUTED, BG, W
         else:
             # Modo 2: Formato editable con advertencia
             st.warning(
-                "⚠️ **ADVERTENCIA:** Cambiar el formato de fecha puede afectar la correcta lectura de los archivos. "
+                " **ADVERTENCIA:** Cambiar el formato de fecha puede afectar la correcta lectura de los archivos. "
                 "Verifique que el formato coincida exactamente con el de sus archivos CSV antes de continuar."
             )
             fecha_format = st.text_input(
@@ -125,7 +125,7 @@ def render_concatenador(NAVY, BLUE, GREEN, RED, GRAY, LTGRAY, TEXT, MUTED, BG, W
         
         # --- Mostrar errores ---
         if errores:
-            st.markdown(section_title("⚠️ Errores"), unsafe_allow_html=True)
+            st.markdown(section_title("Errores"), unsafe_allow_html=True)
             for error in errores:
                 st.error(error)
         
@@ -172,7 +172,7 @@ def render_concatenador(NAVY, BLUE, GREEN, RED, GRAY, LTGRAY, TEXT, MUTED, BG, W
             col_desc1, col_desc2 = st.columns(2)
             with col_desc1:
                 st.download_button(
-                    label="⬇️ Descargar CSV",
+                    label=" Descargar CSV",
                     data=csv_bytes,
                     file_name=f"fwl_{pais}_concatenado.csv",
                     mime="text/csv",
@@ -187,7 +187,7 @@ def render_concatenador(NAVY, BLUE, GREEN, RED, GRAY, LTGRAY, TEXT, MUTED, BG, W
                 excel_buffer.seek(0)
                 
                 st.download_button(
-                    label="⬇️ Descargar Excel",
+                    label=" Descargar Excel",
                     data=excel_buffer.getvalue(),
                     file_name=f"fwl_{pais}_concatenado.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
