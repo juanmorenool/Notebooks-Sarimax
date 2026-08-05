@@ -57,11 +57,30 @@ def render_concatenador(NAVY, BLUE, GREEN, RED, GRAY, LTGRAY, TEXT, MUTED, BG, W
             help="Código del país (debe coincidir en los archivos)"
         )
         
-        fecha_format = st.text_input(
-            "Formato de fecha",
-            value="%d%b%Y",
-            help="Ejemplo: %d%b%Y para '01mar26', %Y-%m-%d para '2026-03-01'"
+        # ======================================================================
+        # CAMPO DE FORMATO DE FECHA - SINCRONIZADO CON GENERADOR
+        # ======================================================================
+        usar_fecha_default = st.checkbox(
+            "Usar formato de fecha predeterminado",
+            value=True,
+            help="Activar para usar el formato estándar: %d%b%Y (ejemplo: 01mar26)"
         )
+        
+        if usar_fecha_default:
+            # Modo 1: Formato fijo bloqueado
+            st.info("Formato fijo: `%d%b%Y` (ejemplo: 01mar26)")
+            fecha_format = "%d%b%Y"
+        else:
+            # Modo 2: Formato editable con advertencia
+            st.warning(
+                "⚠️ **ADVERTENCIA:** Cambiar el formato de fecha puede afectar la correcta lectura de los archivos. "
+                "Verifique que el formato coincida exactamente con el de sus archivos CSV antes de continuar."
+            )
+            fecha_format = st.text_input(
+                "Formato de fecha personalizado",
+                value="%d%b%Y",
+                help="Ejemplo: %Y-%m-%d para '2026-03-01', %d/%m/%Y para '01/03/26', %d%b%Y para '01mar26'"
+            )
     
     with col2:
         st.markdown(section_title("Archivos a cargar"), unsafe_allow_html=True)
@@ -92,7 +111,12 @@ def render_concatenador(NAVY, BLUE, GREEN, RED, GRAY, LTGRAY, TEXT, MUTED, BG, W
     # =====================================================================
     if archivos_cargados:
         with st.spinner("Procesando archivos..."):
-            resultado = procesar_archivos_impacto(archivos_cargados, pais=pais)
+            # PROPAGACIÓN DE fecha_format AL BACKEND
+            resultado = procesar_archivos_impacto(
+                archivos_cargados, 
+                pais=pais,
+                fecha_format=fecha_format  # ← Ahora se pasa el parámetro
+            )
         
         df_resultado = resultado['df']
         avisos = resultado['avisos']
