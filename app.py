@@ -2983,8 +2983,8 @@ else:
 st.markdown(f"""
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
     <div>
-        <p style="font-size:22px;font-weight:700;color:{NAVY};margin:0;">SARIMAX IFRS 9</p>
-        <p style="font-size:12px;color:{MUTED};margin:4px 0 0;">Generador y Dashboard de Modelos</p>
+        <p style="font-size:22px;font-weight:700;color:{NAVY};margin:0;">SARIMAX / IFRS 9</p>
+        <p style="font-size:12px;color:{MUTED};margin:4px 0 0;">Generador, Dashboard de Modelos y Concatenador</p>
     </div>
 </div>
 <div style="height:1px;background:{BORDER};margin:12px 0 16px;"></div>
