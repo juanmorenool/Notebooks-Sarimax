@@ -287,55 +287,7 @@ PESOS_SCORE_GLOBAL = {
 
 ---
 
-## Instalacion y Ejecucion Local
 
-### Requisitos del sistema
-
-- Python 3.8 o superior
-- pip
-
-### Pasos
-
-```bash
-git clone https://github.com/tu_usuario/notebooks-sarimax.git
-cd notebooks-sarimax
-
-python -m venv venv
-source venv/bin/activate
-# En Windows: venv\Scripts\activate
-
-pip install -r requirements.txt
-
-streamlit run app.py
-```
-
-La aplicacion se abrira en `http://localhost:8501`.
-
-Para ejecucion con nivel de debug:
-
-```bash
-streamlit run app.py --logger.level=debug
-```
-
----
-
-## Despliegue en Streamlit Cloud
-
-1. Sube el repositorio a GitHub.
-2. Accede a [https://share.streamlit.io](https://share.streamlit.io).
-3. Selecciona el repositorio.
-4. Configura `app.py` como archivo principal.
-5. El despliegue se ejecutara automaticamente.
-
-La aplicacion estara disponible en:
-
-```
-https://[usuario]-notebooks-sarimax-main-[hash].streamlit.app
-```
-
-Los despliegues subsecuentes ocurren automaticamente con cada push a la rama principal.
-
----
 
 ## Dependencias
 
@@ -358,16 +310,6 @@ Nota: `fpdf` se mantiene por compatibilidad legacy; la generacion de PDF actual 
 
 ---
 
-## Paleta Corporativa
-
-| Color | Hex | Uso |
-|-------|-----|-----|
-| Navy | `#001a4d` | Encabezados, elementos principales |
-| Blue | `#0052cc` | Acentos, enlaces, elementos interactivos |
-| Green | `#34a853` | Indicadores positivos, coeficientes positivos |
-| Red | `#d33b27` | Alertas, coeficientes negativos |
-| Tipografia | Inter | Texto general de la interfaz |
-
 ---
 
 ## Notas Tecnicas
@@ -383,26 +325,6 @@ Nota: `fpdf` se mantiene por compatibilidad legacy; la generacion de PDF actual 
 
 ---
 
-## Desarrollo y Contribuciones
-
-Para agregar nuevas funcionalidades:
-
-```bash
-git checkout -b feature/nueva-funcion
-git commit -m "Add: descripcion de cambios"
-git push origin feature/nueva-funcion
-```
-
-Abra un Pull Request con descripcion detallada de los cambios.
-
----
-
-## Contacto y Licencia
-
-**Responsable**: Juan Jose Moreno  
-**Rol**: Financial Risk Analyst - IFRS 9 Credit Risk Modeling
-
 Ultima actualizacion: Agosto 2026  
-Version: V 38.0 2026  
-Licencia: Privado - Uso Interno  
+Version: V 38.0 2026    
 Contexto: Provision de cartera bajo NIIF 9 / IFRS 9 — Modelos SARIMAX con variables macroeconomicas.
