@@ -137,6 +137,22 @@ def inject_css():
         background-color: {WHITE}; border-right: 1px solid {BORDER};
         min-width: 260px !important; max-width: 260px !important;
     }}
+    /* Compactar file uploader dentro del sidebar */
+    section[data-testid="stSidebar"] [data-testid="stFileUploader"] {{
+        padding: 0 !important;
+    }}
+    section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] {{
+        min-height: 50px !important;
+        padding: 8px 6px !important;
+    }}
+    section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] div div small {{
+        font-size: 11px !important;
+        line-height: 1.2 !important;
+    }}
+    section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button {{
+        font-size: 11px !important;
+        padding: 2px 8px !important;
+    }}
     section[data-testid="stSidebar"] .block-container {{ padding: 16px; }}
     h1 {{ color: {NAVY} !important; font-weight: 700 !important; font-size: 22px !important; }}
     h2 {{ color: {NAVY} !important; font-weight: 600 !important; font-size: 16px !important; margin-top: 0.2rem !important; }}
