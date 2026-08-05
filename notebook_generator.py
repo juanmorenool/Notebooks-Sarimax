@@ -17,9 +17,9 @@ CARTERA_MAP = {
     "consumo": "cons",
     "tarjeta": "tc",
     "vehículo": "vehic",
-    "corporativo": "comercial",
+    "corporativo": "corp",      # ← código propio, independiente de comercial
     "pymes": "pyme",
-    "comercial": "comercial",
+    "comercial": "comercial",  # ← mantiene su propio código
     "hipotecas": "hipo",
 }
 
@@ -28,7 +28,8 @@ CARTERA_LABEL = {
     "cons": "consumo",
     "tc": "tarjeta",
     "vehic": "vehículo",
-    "comercial": "corporativo",
+    "corp": "corporativo",      # ← desmapea corp → corporativo
+    "comercial": "comercial",   # ← desmapea comercial → comercial
     "pyme": "pymes",
     "hipo": "hipotecas",
 }
@@ -38,7 +39,8 @@ IMPACTO_LABEL_MAP = {
     "cons": "consumo",
     "tc": "tarjeta",
     "vehic": "vehiculo",
-    "comercial": "comercial",
+    "corp": "corporativo",      # ← impacto para corporativo
+    "comercial": "comercial",   # ← impacto para comercial
     "pyme": "pyme",
     "hipo": "hipotecas",
 }
