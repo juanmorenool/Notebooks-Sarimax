@@ -2142,6 +2142,8 @@ def fig_histograma_residuos(vals, media, std):
 
 def fig_barras_coeficientes(df_coef):
     df = df_coef.copy()
+    df['Coeficiente'] = pd.to_numeric(df['Coeficiente'], errors='coerce')
+    df = df.dropna(subset=['Coeficiente'])
     df['abs'] = df['Coeficiente'].abs()
     df = df.sort_values('abs', ascending=True)
     colors = [GREEN if c >= 0 else RED for c in df['Coeficiente']]
