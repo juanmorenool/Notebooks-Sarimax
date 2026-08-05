@@ -11,42 +11,33 @@ from concatenador_streamlit import procesar_archivos_impacto, generar_csv_bytes
 def render_concatenador(NAVY, BLUE, GREEN, RED, GRAY, LTGRAY, TEXT, MUTED, BG, WHITE, BORDER, TINT):
     """
     Renderiza la interfaz del concatenador como un tab/seccion.
-
-    Args:
-        NAVY, BLUE, GREEN, RED, etc.: Variables de color de la paleta corporativa
     """
 
     # =====================================================================
-    # CSS CUSTOM: Botones de descarga estilo liquid glass verde palido
+    # CSS: Botones de descarga con color verde suave
     # =====================================================================
     st.markdown("""
     <style>
-    /* Contenedor que envuelve los botones de descarga del concatenador */
-    .concat-download-btn button[kind="secondary"] {
-        background: rgba(212, 237, 218, 0.55) !important;
-        backdrop-filter: blur(10px) saturate(160%) !important;
-        -webkit-backdrop-filter: blur(10px) saturate(160%) !important;
-        border: 1px solid rgba(76, 175, 80, 0.35) !important;
-        border-radius: 10px !important;
+    /* Contenedor de botones de descarga del concatenador */
+    div[data-testid="stVerticalBlock"]:has(> div > div[data-testid="stDownloadButton"]) button {
+        background-color: #e8f5e9 !important;
         color: #1b5e20 !important;
+        border: 1px solid #a5d6a7 !important;
+        border-radius: 8px !important;
         font-weight: 600 !important;
-        box-shadow: 0 2px 8px rgba(27, 94, 32, 0.08) !important;
-        transition: all 0.2s ease !important;
+        transition: all 0.15s ease !important;
     }
-    .concat-download-btn button[kind="secondary"]:hover {
-        background: rgba(200, 230, 201, 0.85) !important;
-        border-color: rgba(76, 175, 80, 0.6) !important;
-        box-shadow: 0 4px 14px rgba(27, 94, 32, 0.14) !important;
-        transform: translateY(-1px) !important;
+    div[data-testid="stVerticalBlock"]:has(> div > div[data-testid="stDownloadButton"]) button:hover {
+        background-color: #c8e6c9 !important;
+        border-color: #66bb6a !important;
+        box-shadow: 0 2px 8px rgba(27, 94, 32, 0.12) !important;
     }
-    .concat-download-btn button[kind="secondary"]:active {
-        transform: translateY(0px) !important;
-        box-shadow: 0 1px 4px rgba(27, 94, 32, 0.1) !important;
+    div[data-testid="stVerticalBlock"]:has(> div > div[data-testid="stDownloadButton"]) button:active {
+        background-color: #a5d6a7 !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
-    # Estilos y helpers (reutilizados de la app principal)
     def section_title(text):
         return f"<p style='font-size:13px;font-weight:700;color:{NAVY};margin:0 0 12px;text-transform:uppercase;letter-spacing:0.5px;'>{text}</p>"
 
@@ -87,9 +78,6 @@ def render_concatenador(NAVY, BLUE, GREEN, RED, GRAY, LTGRAY, TEXT, MUTED, BG, W
             help="Codigo del pais (debe coincidir en los archivos)"
         )
 
-        # =================================================================
-        # CAMPO DE FORMATO DE FECHA - SINCRONIZADO CON GENERADOR
-        # =================================================================
         usar_fecha_default = st.checkbox(
             "Usar formato de fecha predeterminado",
             value=True,
@@ -97,11 +85,9 @@ def render_concatenador(NAVY, BLUE, GREEN, RED, GRAY, LTGRAY, TEXT, MUTED, BG, W
         )
 
         if usar_fecha_default:
-            # Modo 1: Formato fijo bloqueado
             st.info("Formato fijo: `%d%b%Y` (ejemplo: 01mar26)")
             fecha_format = "%d%b%Y"
         else:
-            # Modo 2: Formato editable con advertencia
             st.warning(
                 "ADVERTENCIA: Cambiar el formato de fecha puede afectar la correcta lectura de los archivos. "
                 "Verifique que el formato coincida exactamente con el de sus archivos CSV antes de continuar."
@@ -141,9 +127,8 @@ def render_concatenador(NAVY, BLUE, GREEN, RED, GRAY, LTGRAY, TEXT, MUTED, BG, W
     # =====================================================================
     if archivos_cargados:
         with st.spinner("Procesando archivos..."):
-            # PROPAGACION DE fecha_format AL BACKEND
             resultado = procesar_archivos_impacto(
-                archivos_cargados, 
+                archivos_cargados,
                 pais=pais,
                 fecha_format=fecha_format
             )
@@ -153,19 +138,16 @@ def render_concatenador(NAVY, BLUE, GREEN, RED, GRAY, LTGRAY, TEXT, MUTED, BG, W
         errores = resultado['errores']
         archivos_proc = resultado['archivos_procesados']
 
-        # --- Mostrar errores ---
         if errores:
             st.markdown(section_title("Errores"), unsafe_allow_html=True)
             for error in errores:
                 st.error(error)
 
-        # --- Mostrar avisos ---
         if avisos:
             st.markdown(section_title("Avisos"), unsafe_allow_html=True)
             for aviso in avisos:
                 st.info(aviso)
 
-        # --- Resumen ---
         st.markdown(divider(), unsafe_allow_html=True)
         st.markdown(section_title("Resumen del procesamiento"), unsafe_allow_html=True)
 
@@ -180,7 +162,6 @@ def render_concatenador(NAVY, BLUE, GREEN, RED, GRAY, LTGRAY, TEXT, MUTED, BG, W
             if df_resultado is not None:
                 st.markdown(card_kpi("Filas resultado", str(len(df_resultado)), accent=BLUE), unsafe_allow_html=True)
 
-        # --- Vista previa de datos ---
         if df_resultado is not None and not df_resultado.empty:
             st.markdown(divider(), unsafe_allow_html=True)
             st.markdown(section_title("Vista previa del resultado"), unsafe_allow_html=True)
@@ -193,45 +174,36 @@ def render_concatenador(NAVY, BLUE, GREEN, RED, GRAY, LTGRAY, TEXT, MUTED, BG, W
 
             st.dataframe(df_resultado.head(20), use_container_width=True)
 
-            # --- Descarga con estilo liquid glass ---
+            # --- Descarga ---
             st.markdown(divider(), unsafe_allow_html=True)
             st.markdown(section_title("Descargar resultado"), unsafe_allow_html=True)
 
             csv_bytes = generar_csv_bytes(df_resultado)
 
-            # Contenedor con clase CSS para aplicar el estilo liquid glass
-            with st.container(key="concat_download_container"):
-                col_desc1, col_desc2 = st.columns(2)
-                with col_desc1:
-                    st.markdown('<div class="concat-download-btn">', unsafe_allow_html=True)
-                    st.download_button(
-                        label="Descargar CSV",
-                        data=csv_bytes,
-                        file_name=f"fwl_{pais}_concatenado.csv",
-                        mime="text/csv",
-                        use_container_width=True,
-                        key="btn_descargar_csv"
-                    )
-                    st.markdown('</div>', unsafe_allow_html=True)
+            col_desc1, col_desc2 = st.columns(2)
+            with col_desc1:
+                st.download_button(
+                    label="Descargar CSV",
+                    data=csv_bytes,
+                    file_name=f"fwl_{pais}_concatenado.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
 
-                with col_desc2:
-                    excel_buffer = __import__('io').BytesIO()
-                    with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-                        df_resultado.to_excel(writer, index=False, sheet_name='Impactos')
-                    excel_buffer.seek(0)
+            with col_desc2:
+                excel_buffer = __import__('io').BytesIO()
+                with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                    df_resultado.to_excel(writer, index=False, sheet_name='Impactos')
+                excel_buffer.seek(0)
 
-                    st.markdown('<div class="concat-download-btn">', unsafe_allow_html=True)
-                    st.download_button(
-                        label="Descargar Excel",
-                        data=excel_buffer.getvalue(),
-                        file_name=f"fwl_{pais}_concatenado.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True,
-                        key="btn_descargar_excel"
-                    )
-                    st.markdown('</div>', unsafe_allow_html=True)
+                st.download_button(
+                    label="Descargar Excel",
+                    data=excel_buffer.getvalue(),
+                    file_name=f"fwl_{pais}_concatenado.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
 
-            # --- Estadisticas de las columnas ---
             st.markdown(divider(), unsafe_allow_html=True)
             st.markdown(section_title("Estadisticas de variables de impacto"), unsafe_allow_html=True)
 
@@ -241,7 +213,6 @@ def render_concatenador(NAVY, BLUE, GREEN, RED, GRAY, LTGRAY, TEXT, MUTED, BG, W
                 st.dataframe(stats_df, use_container_width=True)
             else:
                 st.caption("No se encontraron columnas de Impacto en el resultado.")
-
         else:
             if df_resultado is None:
                 st.warning("No se pudo generar el resultado debido a errores en el procesamiento.")
