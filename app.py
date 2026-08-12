@@ -2540,12 +2540,12 @@ def render_vista_favoritos():
                     <p style="font-size:11px;color:{MUTED};margin:10px 0 0;">{obs} observaciones - AR {ar_count} / MA {ma_count}</p>
                 </div>
                 """, unsafe_allow_html=True)
-                if st.button("🔍 Ver modelo", key=f"abrir_fav_{nombre}", use_container_width=True):
+                if st.button("Ver modelo", key=f"abrir_fav_{nombre}", use_container_width=True):
                     st.session_state.modelo_seleccionado = nombre
                     st.session_state.vista_favoritos = False
                     st.session_state.vista_resumen = False
                     st.rerun()
-                if st.button("❌ Quitar de favoritos", key=f"quitar_fav_{nombre}", use_container_width=True):
+                if st.button(" Quitar de favoritos", key=f"quitar_fav_{nombre}", use_container_width=True):
                     alternar_favorito(nombre)
                     st.rerun()
 
