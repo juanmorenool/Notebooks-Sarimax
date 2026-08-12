@@ -2540,17 +2540,14 @@ def render_vista_favoritos():
                     <p style="font-size:11px;color:{MUTED};margin:10px 0 0;">{obs} observaciones - AR {ar_count} / MA {ma_count}</p>
                 </div>
                 """, unsafe_allow_html=True)
-                bc1, bc2 = st.columns(2)
-                with bc1:
-                    if st.button("Abrir", key=f"abrir_fav_{nombre}", use_container_width=True):
-                        st.session_state.modelo_seleccionado = nombre
-                        st.session_state.vista_favoritos = False
-                        st.session_state.vista_resumen = False
-                        st.rerun()
-                with bc2:
-                    if st.button("Quitar", key=f"quitar_fav_{nombre}", use_container_width=True):
-                        alternar_favorito(nombre)
-                        st.rerun()
+                if st.button("🔍 Ver modelo", key=f"abrir_fav_{nombre}", use_container_width=True):
+                    st.session_state.modelo_seleccionado = nombre
+                    st.session_state.vista_favoritos = False
+                    st.session_state.vista_resumen = False
+                    st.rerun()
+                if st.button("❌ Quitar de favoritos", key=f"quitar_fav_{nombre}", use_container_width=True):
+                    alternar_favorito(nombre)
+                    st.rerun()
 
 def render_seccion_coeficientes(datos, key_prefix="diag"):
     st.markdown(section_title("Coeficientes del modelo"), unsafe_allow_html=True)
@@ -3502,15 +3499,21 @@ with tab_dash:
                     position: fixed !important;
                     bottom: 22px;
                     left: 50%;
-                    transform: translateX(-46%);
+                    transform: translateX(-50%) !important;
                     z-index: 9999;
                     background: {WHITE};
                     border: 1px solid {BORDER};
                     border-radius: 14px;
                     box-shadow: 0 8px 28px rgba(11,37,69,0.16);
-                    padding: 6px 10px !important;
+                    padding: 8px 14px !important;
                     width: auto !important;
-                    max-width: 560px;
+                    min-width: 420px !important;
+                    max-width: 600px !important;
+                }}
+                .st-key-nav_flechas p {{
+                    white-space: nowrap !important;
+                    overflow: hidden !important;
+                    text-overflow: ellipsis !important;
                 }}
                 .block-container {{ padding-bottom: 120px !important; }}
                 </style>
