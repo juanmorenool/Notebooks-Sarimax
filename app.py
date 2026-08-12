@@ -3468,11 +3468,11 @@ with tab_dash:
                     with st.spinner("Generando documento metodológico..."):
                         ok = generar_y_guardar_documentos(st.session_state.modelo_seleccionado)
                     if ok:
-                        st.success("✅ Documento generado. Descarga abajo.")
+                        st.success(" Documento generado. Descarga abajo.")
                     st.rerun()
             with cfinal2:
                 st.download_button(
-                    "⬇️ Descargar PDF",
+                    " Descargar PDF",
                     data=st.session_state.documento_metodologico_pdf or b"",
                     file_name=st.session_state.documento_metodologico_pdf_nombre or "Documento_Metodologico.pdf",
                     mime="application/pdf",
@@ -3481,7 +3481,7 @@ with tab_dash:
                 )
             with cfinal3:
                 st.download_button(
-                    "⬇️ Descargar Excel",
+                    " Descargar Excel",
                     data=st.session_state.documento_metodologico_excel or b"",
                     file_name=st.session_state.documento_metodologico_excel_nombre or "Documento_Metodologico.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
