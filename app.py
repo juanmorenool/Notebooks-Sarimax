@@ -2288,6 +2288,9 @@ def es_favorito(nombre):
     return nombre in st.session_state.get("favoritos", set())
 
 def alternar_favorito(nombre):
+    """Agrega o quita un modelo de favoritos con validación de set."""
+    if not isinstance(st.session_state.get("favoritos"), set):
+        st.session_state.favoritos = set()
     if nombre in st.session_state.favoritos:
         st.session_state.favoritos.discard(nombre)
     else:
@@ -2301,11 +2304,19 @@ def boton_favorito(nombre, key_suffix=""):
         st.rerun()
 
 def construir_opciones_modelos():
+    """Construye lista de modelos con filtros y ordenamiento."""
     criterio = st.session_state.get("criterio_ordenamiento", "Pruebas aprobadas ↓")
     filtro_ljung = st.session_state.get("filtro_ljung", "Todos")
     filtro_jarque = st.session_state.get("filtro_jarque", "Todos")
     filtro_hetero = st.session_state.get("filtro_hetero", "Todos")
     filtro_favoritos = st.session_state.get("filtro_favoritos", False)
+
+    # Asegurar que favoritos es un set válido
+    fav_set = st.session_state.get("favoritos", set())
+    if not isinstance(fav_set, set):
+        fav_set = set()
+        st.session_state.favoritos = fav_set
+
     modelos_con_pruebas = []
     for nombre, datos in st.session_state.modelos_data.items():
         pruebas = datos.get('pruebas')
@@ -2336,8 +2347,10 @@ def construir_opciones_modelos():
                 pasa_filtro = False
             elif filtro_hetero == "Solo A" and score_hetero != 'A':
                 pasa_filtro = False
-        if filtro_favoritos and nombre not in st.session_state.get("favoritos", set()):
-            pasa_filtro = False
+        # FIX: Validación segura de favoritos
+        if filtro_favoritos:
+            if nombre not in fav_set:
+                pasa_filtro = False
         if pasa_filtro:
             score_global, _ = calcular_score_global(pruebas)
             modelos_con_pruebas.append((nombre, apr, tot, scores, score_global))
@@ -2497,7 +2510,12 @@ def render_resumen_ejecutivo():
             st.rerun()
 
 def render_vista_favoritos():
-    favoritos = st.session_state.get("favoritos", set())
+    """Renderiza la vista de modelos favoritos con validación de set."""
+    # Asegurar que favoritos es siempre un set válido
+    if not isinstance(st.session_state.get("favoritos"), set):
+        st.session_state.favoritos = set()
+
+    favoritos = st.session_state.favoritos
     modelos_data = st.session_state.modelos_data
     favoritos_validos = [m for m in favoritos if m in modelos_data]
     st.markdown(f"""
@@ -2876,6 +2894,16 @@ def render_generador():
 # SESSION STATE
 # =============================================================================
 _prefs_guardadas = cargar_prefs_sidebar()
+
+# Inicializar favoritos de forma segura ANTES del loop
+if "favoritos" not in st.session_state:
+    st.session_state.favoritos = set()
+elif not isinstance(st.session_state.favoritos, set):
+    try:
+        st.session_state.favoritos = set(st.session_state.favoritos)
+    except Exception:
+        st.session_state.favoritos = set()
+
 for key, default in [
     ("uploaded_file", None), ("modelos_data", {}), ("meta_contexto", None),
     ("modelo_seleccionado", None),
@@ -2893,7 +2921,7 @@ for key, default in [
     ("filtro_jarque", _prefs_guardadas.get("filtro_jarque", "Todos")),
     ("filtro_hetero", _prefs_guardadas.get("filtro_hetero", "Todos")),
     ("vista_resumen", True), ("comparar_sel", []),
-    ("favoritos", set()),
+    # ("favoritos", set()),  # Ya se inicializa de forma segura arriba
     ("filtro_favoritos", _prefs_guardadas.get("filtro_favoritos", False)),
     ("vista_favoritos", False),
     ("sec_contexto", _prefs_guardadas.get("sec_contexto", True)),
@@ -3494,33 +3522,12 @@ with tab_dash:
 
             # --- Bottom nav bar ---
             nav_sticky = st.session_state.get("nav_sticky", True)
-            if nav_sticky:
-                st.markdown(f"""
-                <style>
-                div[data-testid="stVerticalBlockBorderWrapper"]:has(> div > div.st-key-nav_flechas),
-                .st-key-nav_flechas {{
-                    position: fixed !important;
-                    bottom: 22px;
-                    left: 50%;
-                    transform: translateX(-46%);
-                    z-index: 9999;
-                    background: {WHITE};
-                    border: 1px solid {BORDER};
-                    border-radius: 14px;
-                    box-shadow: 0 8px 28px rgba(11,37,69,0.16);
-                    padding: 6px 10px !important;
-                    width: auto !important;
-                    max-width: 560px;
-                }}
-                .block-container {{ padding-bottom: 120px !important; }}
-                </style>
-                """, unsafe_allow_html=True)
-            else:
-                st.markdown("<div style='height:40px;'></div>", unsafe_allow_html=True)
+
+            # Renderizar botones de navegación (siempre en el flujo normal)
             with st.container(key="nav_flechas"):
                 nav_cols = st.columns([1, 2, 1])
                 with nav_cols[0]:
-                    if st.button("Anterior", disabled=current_idx == 0, key="btn_prev_real", use_container_width=True):
+                    if st.button("◀ Anterior", disabled=current_idx == 0, key="btn_prev_real", use_container_width=True):
                         st.session_state.pending_modelo = modelos_list[current_idx - 1]
                         st.rerun()
                 with nav_cols[1]:
@@ -3534,9 +3541,76 @@ with tab_dash:
                         unsafe_allow_html=True
                     )
                 with nav_cols[2]:
-                    if st.button("Siguiente", disabled=current_idx == len(modelos_list) - 1, key="btn_next_real", use_container_width=True):
+                    if st.button("Siguiente ▶", disabled=current_idx == len(modelos_list) - 1, key="btn_next_real", use_container_width=True):
                         st.session_state.pending_modelo = modelos_list[current_idx + 1]
                         st.rerun()
+
+            # Aplicar estilos fijos vía JavaScript robusto (no CSS frágil con :has())
+            if nav_sticky:
+                st.components.html(f"""
+                <script>
+                (function() {{
+                    if (window.__navStickyApplied) return;
+                    window.__navStickyApplied = true;
+
+                    function applyStickyNav() {{
+                        var nav = document.querySelector('.st-key-nav_flechas');
+                        if (!nav) return false;
+
+                        // Subir al ancestro que es el bloque contenedor de Streamlit
+                        var wrapper = nav.closest('[data-testid="stVerticalBlock"]');
+                        if (!wrapper) wrapper = nav.parentElement;
+                        if (!wrapper) return false;
+
+                        // Aplicar estilos al wrapper (no al nav interno)
+                        wrapper.style.position = 'fixed';
+                        wrapper.style.bottom = '24px';
+                        wrapper.style.left = '50%';
+                        wrapper.style.transform = 'translateX(-50%)';
+                        wrapper.style.zIndex = '9999';
+                        wrapper.style.background = '{WHITE}';
+                        wrapper.style.border = '1px solid {BORDER}';
+                        wrapper.style.borderRadius = '14px';
+                        wrapper.style.boxShadow = '0 8px 28px rgba(11,37,69,0.16)';
+                        wrapper.style.padding = '8px 16px';
+                        wrapper.style.width = 'auto';
+                        wrapper.style.minWidth = '420px';
+                        wrapper.style.maxWidth = '640px';
+                        wrapper.style.backdropFilter = 'blur(8px)';
+
+                        // Animación de entrada
+                        wrapper.style.animation = 'navSlideUp 0.35s ease-out';
+
+                        // Padding inferior al body para que no tape contenido
+                        var blockContainer = document.querySelector('.block-container');
+                        if (blockContainer) {{
+                            blockContainer.style.paddingBottom = '120px';
+                        }}
+
+                        return true;
+                    }}
+
+                    // Intentar aplicar inmediatamente y con reintentos
+                    if (!applyStickyNav()) {{
+                        var attempts = 0;
+                        var interval = setInterval(function() {{
+                            attempts++;
+                            if (applyStickyNav() || attempts > 30) {{
+                                clearInterval(interval);
+                            }}
+                        }}, 200);
+                    }}
+                }})();
+                </script>
+                <style>
+                @keyframes navSlideUp {{
+                    from {{ opacity: 0; transform: translateX(-50%) translateY(20px); }}
+                    to {{ opacity: 1; transform: translateX(-50%) translateY(0); }}
+                }}
+                </style>
+                """, height=0, width=0)
+            else:
+                st.markdown("<div style='height:40px;'></div>", unsafe_allow_html=True)
 
 # =========================================================================
 # TAB: CONCATENADOR
