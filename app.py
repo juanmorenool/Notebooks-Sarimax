@@ -2396,16 +2396,16 @@ def render_columna_comparacion(nombre, index=0):
     st.markdown(f"<p style='font-weight:700;color:{NAVY};font-size:13px;margin:0 0 6px;'>{nombre}</p>", unsafe_allow_html=True)
     st.markdown(score_global_badge(score_global), unsafe_allow_html=True)
     st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
-    sc1, sc2, sc3 = st.columns(3)
-    with sc1:
-        s, _ = scores.get('ljung_box', ('N/A', ESTADO_NEUTRAL))
-        st.markdown(card_metric("Ljung-Box", s), unsafe_allow_html=True)
-    with sc2:
-        s, _ = scores.get('jarque_bera', ('N/A', ESTADO_NEUTRAL))
-        st.markdown(card_metric("Jarque-Bera", s), unsafe_allow_html=True)
-    with sc3:
-        s, _ = scores.get('heterocedasticidad', ('N/A', ESTADO_NEUTRAL))
-        st.markdown(card_metric("Heterocedast.", s), unsafe_allow_html=True)
+    s_lb, _ = scores.get('ljung_box', ('N/A', ESTADO_NEUTRAL))
+    s_jb, _ = scores.get('jarque_bera', ('N/A', ESTADO_NEUTRAL))
+    s_ht, _ = scores.get('heterocedasticidad', ('N/A', ESTADO_NEUTRAL))
+    st.markdown(f"""
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px;">
+        {card_metric("Ljung-Box", s_lb)}
+        {card_metric("Jarque-Bera", s_jb)}
+        {card_metric("Heterocedast.", s_ht)}
+    </div>
+    """, unsafe_allow_html=True)
     st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
     df_fwl_comp = datos.get('fwl_12m')
     if df_fwl_comp is not None and not df_fwl_comp.empty:
@@ -2419,11 +2419,12 @@ def render_columna_comparacion(nombre, index=0):
     exogenas = datos.get('exogenas_nombres', [])
     sigs = obtener_significancia_exogenas(coefs, exogenas)
     sig_count = sum(1 for _, _, s in sigs if s == "Significativa")
-    mc1, mc2 = st.columns(2)
-    with mc1:
-        st.markdown(card_metric("AR / MA", f"{ar_count} / {ma_count}", BLUE), unsafe_allow_html=True)
-    with mc2:
-        st.markdown(card_metric("Exog. significativas", f"{sig_count}/{len(exogenas)}", GREEN), unsafe_allow_html=True)
+    st.markdown(f"""
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;">
+        {card_metric("AR / MA", f"{ar_count} / {ma_count}", BLUE)}
+        {card_metric("Exog. significativas", f"{sig_count}/{len(exogenas)}", GREEN)}
+    </div>
+    """, unsafe_allow_html=True)
 
 def fig_distribucion_scores(modelos_data):
     nombre_map = {'ljung_box': 'Ljung-Box', 'jarque_bera': 'Jarque-Bera', 'heterocedasticidad': 'Heterocedasticidad'}
