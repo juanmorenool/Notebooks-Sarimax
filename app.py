@@ -2376,11 +2376,23 @@ def label_modelo(nombre, pruebas_dict, scores_dict=None, global_dict=None):
         label += f"  - {global_dict[nombre]:.1f}/10"
     return label
 
-def render_columna_comparacion(nombre):
+import re
+
+def _sanitizar_key(texto):
+    """Sanitiza un string para usarlo como key en Streamlit.
+    Solo permite: letras, números, _, -, .
+    Reemplaza cualquier otro carácter por _"""
+    return re.sub(r'[^a-zA-Z0-9_.-]', '_', str(texto))
+
+def render_columna_comparacion(nombre, index=0):
     datos = st.session_state.modelos_data.get(nombre, {})
     pruebas = datos.get('pruebas')
     score_global, _ = calcular_score_global(pruebas)
     scores = obtener_scores_modelo(pruebas)
+
+    # Sanitizar el nombre para el key
+    nombre_safe = _sanitizar_key(nombre)
+
     st.markdown(f"<p style='font-weight:700;color:{NAVY};font-size:13px;margin:0 0 6px;'>{nombre}</p>", unsafe_allow_html=True)
     st.markdown(score_global_badge(score_global), unsafe_allow_html=True)
     st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
@@ -2399,7 +2411,7 @@ def render_columna_comparacion(nombre):
     if df_fwl_comp is not None and not df_fwl_comp.empty:
         fig = fig_fwl_12m(df_fwl_comp)
         fig.update_layout(height=280, showlegend=False, title="Factor FWL a 12 Meses")
-        st.plotly_chart(fig, use_container_width=True, key=f"cmp_fig_{nombre}")
+        st.plotly_chart(fig, use_container_width=True, key=f"cmp_fig_{index}_{nombre_safe}")
     else:
         st.caption("Sin datos de FWL a 12 meses.")
     coefs = datos.get('coeficientes')
@@ -3458,7 +3470,7 @@ with tab_dash:
                     cols_comp = st.columns(len(seleccion_comp))
                     for i_comp, nombre_comp in enumerate(seleccion_comp):
                         with cols_comp[i_comp]:
-                            render_columna_comparacion(nombre_comp)
+                            render_columna_comparacion(nombre_comp, i_comp)
                 else:
                     st.info("Seleccione al menos un modelo para iniciar la comparacion.")
             st.markdown(divider(), unsafe_allow_html=True)
