@@ -9,7 +9,7 @@ import os
 import base64
 import openpyxl
 from pathlib import Path
-from datetime import datetime, date
+from datetime import datetime
 from io import BytesIO
 import tempfile
 import matplotlib
@@ -17,16 +17,6 @@ matplotlib.use("Agg")  # Backend sin interfaz grafica - obligatorio en servidore
 import matplotlib.pyplot as plt
 from fpdf import FPDF
 from openpyxl.drawing.image import Image as XLImage
-
-# =============================================================================
-# IMPORT DEL CONCATENADOR (con manejo de error)
-# =============================================================================
-try:
-    from ui_concatenador import render_concatenador
-    CONCATENADOR_DISPONIBLE = True
-except ImportError:
-    CONCATENADOR_DISPONIBLE = False
-    render_concatenador = None
 
 # =============================================================================
 # PALETA CORPORATIVA BANCA
@@ -182,6 +172,84 @@ def inject_css():
         position: fixed !important; top: -9999px !important; left: -9999px !important;
         height: 1px !important; width: 1px !important; overflow: hidden !important;
     }}
+    /* ================================================================
+       ESTILO DASHBOARD EJECUTIVO — inspirado en la referencia visual
+       ================================================================ */
+    .ms-topbar {{
+        background: {NAVY};
+        border-radius: 0 0 8px 8px;
+        min-height: 68px;
+        padding: 0 22px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        box-sizing: border-box;
+        margin: -8px -8px 18px -8px;
+        box-shadow: 0 2px 8px rgba(11,37,69,0.10);
+    }}
+    .ms-topbar-left {{ display: flex; align-items: center; gap: 16px; }}
+    .ms-menu {{
+        width: 28px; height: 28px; display: flex; flex-direction: column;
+        justify-content: center; gap: 4px;
+    }}
+    .ms-menu span {{
+        display:block; width:22px; height:2px; background:rgba(255,255,255,0.92); border-radius:2px;
+    }}
+    .ms-title {{ color:{WHITE}; font-size:18px; font-weight:700; line-height:1.15; margin:0; }}
+    .ms-subtitle {{ color:rgba(255,255,255,0.78); font-size:11px; line-height:1.2; margin:4px 0 0; }}
+    .ms-brand {{ display:flex; align-items:center; gap:9px; color:{WHITE}; }}
+    .ms-logo {{ font-size:22px; font-weight:800; font-style:italic; letter-spacing:-1px; line-height:1; }}
+    .ms-brand-text {{
+        border-left:1px solid rgba(255,255,255,0.35); padding-left:9px; font-size:10px;
+        line-height:1.15; color:rgba(255,255,255,0.88);
+    }}
+    .dashboard-sidebar {{
+        background:{WHITE}; border:1px solid {BORDER}; border-radius:8px;
+        padding:14px 12px; box-sizing:border-box;
+    }}
+    .dash-side-title {{
+        color:{NAVY}; font-size:10px; font-weight:700; letter-spacing:.6px;
+        text-transform:uppercase; margin:0 0 8px;
+    }}
+    .dash-side-item {{
+        display:flex; align-items:center; gap:8px; padding:7px 0; font-size:11px; color:{TEXT};
+        border-bottom:1px solid rgba(222,226,230,0.55);
+    }}
+    .dash-side-item:last-child {{ border-bottom:none; }}
+    .dash-icon {{ width:20px; text-align:center; font-size:14px; color:{BLUE}; }}
+    .dash-side-value {{ display:block; font-weight:700; color:{NAVY}; font-size:11px; }}
+    .dash-side-label {{ display:block; color:{MUTED}; font-size:9px; margin-top:1px; }}
+    .exec-title {{ color:{NAVY}; font-size:20px; font-weight:700; margin:0; letter-spacing:-.2px; }}
+    .exec-subtitle {{ color:{MUTED}; font-size:11px; margin:4px 0 0; }}
+    .exec-card {{
+        background:{WHITE}; border:1px solid {BORDER}; border-radius:9px;
+        padding:14px 14px 12px; min-height:104px; box-sizing:border-box;
+        box-shadow:0 1px 3px rgba(11,37,69,0.03);
+    }}
+    .exec-card-label {{ color:{NAVY}; font-size:10px; font-weight:600; line-height:1.2; min-height:22px; margin:0 0 3px; }}
+    .exec-card-value {{ font-size:27px; font-weight:700; line-height:1.1; margin:0; }}
+    .exec-card-pct {{ font-size:11px; font-weight:600; margin-top:6px; }}
+    .exec-panel {{
+        background:{WHITE}; border:1px solid {BORDER}; border-radius:9px; padding:14px; box-sizing:border-box;
+        box-shadow:0 1px 3px rgba(11,37,69,0.03);
+    }}
+    .exec-panel-title {{
+        color:{NAVY}; font-size:12px; font-weight:700; margin:0 0 10px;
+        text-transform:uppercase; letter-spacing:.35px;
+    }}
+    .exec-html-table {{ width:100%; border-collapse:collapse; font-size:10.5px; }}
+    .exec-html-table th {{
+        background:#F2F4F7; color:{NAVY}; font-weight:700; text-align:left;
+        padding:7px 8px; border-bottom:1px solid {BORDER};
+    }}
+    .exec-html-table td {{ color:{TEXT}; padding:7px 8px; border-bottom:1px solid #EEF1F4; vertical-align:middle; }}
+    .exec-html-table tr:last-child td {{ border-bottom:none; }}
+    .exec-rank {{ color:{MUTED}; font-weight:700; width:24px; }}
+    .exec-badge {{
+        display:inline-block; min-width:22px; padding:3px 7px; border-radius:4px;
+        text-align:center; font-size:9px; font-weight:700;
+    }}
+    .exec-note {{ color:{MUTED}; font-size:10px; line-height:1.35; margin:8px 0 0; }}
     section[data-testid="stSidebar"] button[kind="secondary"][class*="st-key-btn_sec_"],
     section[data-testid="stSidebar"] .st-key-btn_sec_contexto button,
     section[data-testid="stSidebar"] .st-key-btn_sec_orden button,
@@ -278,12 +346,22 @@ def guardar_prefs_sidebar():
     try:
         with open(PREFS_PATH, "w", encoding="utf-8") as f:
             json.dump(prefs, f)
-    except Exception as e:
-        # Usar st.warning en lugar de st.toast para compatibilidad con versiones anteriores
-        st.warning(f"No se pudieron guardar preferencias: {e}")
+    except Exception:
+        pass
+
+def encabezado_colapsable(titulo, key):
+    if key not in st.session_state:
+        st.session_state[key] = True
+    abierto = st.session_state[key]
+    icono = "-" if abierto else "+"
+    if st.button(f"{icono}  {titulo}", key=f"btn_{key}", use_container_width=True):
+        st.session_state[key] = not abierto
+        guardar_prefs_sidebar()
+        st.rerun()
+    return st.session_state[key]
 
 # =============================================================================
-# PARSER (con caché)
+# PARSER
 # =============================================================================
 def convertir_fecha(serie):
     if serie is None or len(serie) == 0:
@@ -300,13 +378,10 @@ def convertir_fecha(serie):
         pass
     return pd.to_datetime(serie, errors='coerce')
 
-@st.cache_data
-def leer_meta_embebida_bytes(file_bytes, prefix="sarimax_meta"):
-    """
-    Lee metadata embebida desde bytes del archivo Excel.
-    """
+def leer_meta_embebida(file, prefix="sarimax_meta"):
     try:
-        wb = openpyxl.load_workbook(BytesIO(file_bytes), read_only=True)
+        file.seek(0)
+        wb = openpyxl.load_workbook(file, read_only=True)
         props = wb.custom_doc_props
         n_prop_name = f"{prefix}_n"
         if n_prop_name not in props.names:
@@ -316,13 +391,11 @@ def leer_meta_embebida_bytes(file_bytes, prefix="sarimax_meta"):
         return json.loads("".join(partes))
     except Exception:
         return None
+    finally:
+        file.seek(0)
 
-@st.cache_data
-def parsear_excel_bytes(file_bytes):
-    """
-    Parsea el contenido del archivo Excel (bytes) y devuelve el diccionario de modelos.
-    """
-    xls = pd.ExcelFile(BytesIO(file_bytes))
+def parsear_excel(file):
+    xls = pd.ExcelFile(file)
     modelos = {}
     for sheet_name in xls.sheet_names:
         try:
@@ -505,17 +578,8 @@ def obtener_significancia_exogenas(coeficientes_df, exogenas_lista):
     return resultados
 
 def calcular_fwl_ponderado(fwl_df, pesos):
-    """
-    Calcula el FWL ponderado. Si la suma de pesos no es 1, se normaliza.
-    """
     if fwl_df is None or fwl_df.empty:
         return None
-    # Normalizar pesos si no suman 1
-    total = sum(pesos.values())
-    if total == 0:
-        return None
-    if abs(total - 1.0) > 1e-6:
-        pesos = {k: v/total for k, v in pesos.items()}
     fecha_col = None
     for c in fwl_df.columns:
         if 'fecha' in str(c).lower():
@@ -634,117 +698,42 @@ def score_global_badge(score, tamano="12px"):
     return (f'<span style="background:{bg};color:{color};font-size:{tamano};padding:3px 10px;'
             f'border-radius:4px;font-weight:700;">{valor} - {etiqueta}</span>')
 
-def clasificar_letra_global(score):
-    """Clasifica el score global en A (9-10), B (7-9), C (4-7), D (0-4)."""
-    if score is None:
-        return "N/A"
-    if score >= 9.0:
-        return "A"
-    elif score >= 7.0:
-        return "B"
-    elif score >= 4.0:
-        return "C"
-    else:
-        return "D"
-
-# -----------------------------------------------------------------------------
-# INTERPRETACIONES EXTENDIDAS (usadas en PDF y en detalles)
-# -----------------------------------------------------------------------------
-def texto_ljungbox(score: str, p: float) -> str:
+def texto_ljungbox(score, p):
+    p_str = fmt_pvalor(p)
     if score == "A":
-        return (
-            "No se detecta autocorrelación significativa en los residuos (p > 0.10). El "
-            "modelo ha capturado adecuadamente la estructura temporal de la serie, por lo "
-            "que no hay evidencia de patrones no explicados en los errores de predicción. "
-            "Esto valida que los componentes AR y MA seleccionados son suficientes para "
-            "modelar la dependencia temporal."
-        )
-    elif score == "B":
-        return (
-            "No existe evidencia concluyente de autocorrelación residual (0.05 < p ≤ 0.10). "
-            "Aunque el estadístico se acerca al umbral de significancia, el modelo "
-            "mantiene un comportamiento aceptable y no se requieren ajustes estructurales "
-            "inmediatos. Se recomienda monitorear en corridas posteriores."
-        )
-    elif score == "C":
-        return (
-            "Se detecta evidencia débil de autocorrelación en los residuos (p ≤ 0.05). "
-            "Esto sugiere que podría existir una estructura temporal no capturada por el "
-            "modelo actual. Se recomienda evaluar la inclusión de rezagos adicionales o "
-            "revisar la especificación ARMA (aumentar p o q)."
-        )
-    else:  # D
-        return (
-            "Se detecta autocorrelación significativa en los residuos (p ≤ 0.01). El "
-            "modelo NO está capturando adecuadamente la dinámica temporal de la serie, lo "
-            "que puede generar predicciones sesgadas e intervalos de confianza inválidos. "
-            "Se requiere reespecificación urgente del modelo (revisar órdenes AR/MA o "
-            "considerar estacionalidad)."
-        )
+        return f"A: p={p_str}. Sin evidencia de autocorrelacion en residuos."
+    if score == "B":
+        return f"B: p={p_str}. Comportamiento aceptable, sin evidencia fuerte de autocorrelacion."
+    if score == "C":
+        return f"C: p={p_str}. Senal moderada de autocorrelacion; requiere monitoreo."
+    if score == "D":
+        return f"D: p={p_str}. Evidencia clara de autocorrelacion; requiere ajuste del modelo."
+    return "Sin datos para interpretar Ljung-Box."
 
-def texto_jarquebera(score: str, p: float) -> str:
+def texto_jarquebera(score, p):
+    p_str = fmt_pvalor(p)
     if score == "A":
-        return (
-            "Los residuos siguen una distribución normal (p > 0.10). Esto valida el uso "
-            "de intervalos de confianza estándar y garantiza la validez de las inferencias "
-            "estadísticas derivadas del modelo. Los errores no presentan asimetría ni "
-            "curtosis problemáticas."
-        )
-    elif score == "B":
-        return (
-            "No se encuentra evidencia concluyente de no-normalidad (0.05 < p ≤ 0.10). "
-            "La distribución de los errores es suficientemente simétrica para mantener la "
-            "confiabilidad de las proyecciones, aunque se sugiere monitoreo periódico."
-        )
-    elif score == "C":
-        return (
-            "Se detecta evidencia débil de no-normalidad en los residuos (p ≤ 0.05). La "
-            "presencia de asimetría o curtosis atípica puede afectar la precisión de los "
-            "intervalos de predicción extremos. Se sugiere monitorear especialmente los "
-            "escenarios adverso y optimista."
-        )
-    else:  # D
-        return (
-            "Los residuos presentan desviaciones significativas de la normalidad (p ≤ 0.01): "
-            "asimetría y/o curtosis extrema. Esto invalida los intervalos de confianza "
-            "clásicos y puede indicar la presencia de valores atípicos no modelados o una "
-            "especificación incorrecta. Se recomienda transformar la variable (ej. logit) "
-            "o utilizar métodos robustos."
-        )
+        return f"A: p={p_str}. Residuos consistentes con normalidad."
+    if score == "B":
+        return f"B: p={p_str}. Normalidad razonable para analisis operativo."
+    if score == "C":
+        return f"C: p={p_str}. Posible desvio de normalidad; revisar outliers o transformaciones."
+    if score == "D":
+        return f"D: p={p_str}. No normalidad marcada de residuos."
+    return "Sin datos para interpretar Jarque-Bera."
 
-def texto_hetero(score: str, p: float) -> str:
+def texto_hetero(score, p):
+    p_str = fmt_pvalor(p)
     if score == "A":
-        return (
-            "No se detecta heterocedasticidad (p > 0.10). La varianza de los residuos es "
-            "constante a lo largo del tiempo, cumpliendo con el supuesto de homocedasticidad "
-            "requerido para la inferencia válida del modelo. Los errores estándar de los "
-            "coeficientes son confiables."
-        )
-    elif score == "B":
-        return (
-            "No existe evidencia concluyente de varianza no constante (0.05 < p ≤ 0.10). "
-            "El modelo mantiene estabilidad en la dispersión de los errores a través de la "
-            "muestra. No se requieren correcciones adicionales."
-        )
-    elif score == "C":
-        return (
-            "Se detecta evidencia débil de heterocedasticidad (p ≤ 0.05). La varianza de "
-            "los errores presenta cambios moderados en el tiempo, lo que puede afectar la "
-            "eficiencia de los estimadores. Se sugiere considerar modelos ARCH/GARCH para "
-            "la volatilidad o utilizar errores estándar robustos (White)."
-        )
-    else:  # D
-        return (
-            "Se confirma heterocedasticidad significativa (p ≤ 0.01). La varianza de los "
-            "residuos NO es constante, lo que genera estimadores ineficientes y errores "
-            "estándar sesgados. Las proyecciones pueden subestimar o sobrestimar el riesgo "
-            "en diferentes períodos. Se requiere corrección: errores estándar robustos o "
-            "modelos de varianza condicional (ARCH/GARCH)."
-        )
+        return f"A: p={p_str}. Varianza de residuos estable."
+    if score == "B":
+        return f"B: p={p_str}. Sin evidencia significativa de heterocedasticidad."
+    if score == "C":
+        return f"C: p={p_str}. Senal debil de heterocedasticidad; monitorear estabilidad."
+    if score == "D":
+        return f"D: p={p_str}. Evidencia de heterocedasticidad; revisar especificacion."
+    return "Sin datos para interpretar heterocedasticidad."
 
-# -----------------------------------------------------------------------------
-# Funciones de interpretación corta para la UI (usando las mismas)
-# -----------------------------------------------------------------------------
 def interpretar_prueba(nombre_prueba, p_val, score):
     if score == 'N/A' or p_val is None or (isinstance(p_val, float) and pd.isna(p_val)):
         return "Sin datos disponibles para esta prueba."
@@ -765,6 +754,104 @@ def interpretar_prueba(nombre_prueba, p_val, score):
 
 def score_badge(score, bg_color, fg_color):
     return f'<span style="background:{bg_color};color:{fg_color};font-size:12px;padding:3px 10px;border-radius:4px;font-weight:700;">{score}</span>'
+
+def clasificacion_corta(score_num):
+    """Clasificacion ejecutiva para el resumen de corrida."""
+    if score_num is None or pd.isna(score_num):
+        return "N/A"
+    try:
+        score_num = float(score_num)
+    except Exception:
+        return "N/A"
+    if score_num >= 7:
+        return "BUENO"
+    if score_num >= 5:
+        return "REGULAR"
+    return "DEFICIENTE"
+
+
+def badge_clasificacion(score_num):
+    """Badge HTML compacto para tablas ejecutivas."""
+    clase = clasificacion_corta(score_num)
+    if clase == "BUENO":
+        bg, fg = "#E8F5E9", GREEN
+    elif clase == "REGULAR":
+        bg, fg = "#FFF8E1", "#B8860B"
+    elif clase == "DEFICIENTE":
+        bg, fg = "#FFEBEE", RED
+    else:
+        bg, fg = "#F5F5F5", GRAY
+    return f'<span class="exec-badge" style="background:{bg};color:{fg};">{clase}</span>'
+
+
+def render_app_topbar():
+    """Barra superior corporativa estilo MS Management Solutions."""
+    st.markdown(f"""
+    <div class="ms-topbar">
+        <div class="ms-topbar-left">
+            <div class="ms-menu" aria-hidden="true">
+                <span></span><span></span><span></span>
+            </div>
+            <div>
+                <p class="ms-title">Análisis de Modelos SARIMAX</p>
+                <p class="ms-subtitle">Proyección de Carteras de Crédito</p>
+            </div>
+        </div>
+        <div class="ms-brand">
+            <div class="ms-logo">MS</div>
+            <div class="ms-brand-text">Management<br>Solutions</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def render_dashboard_sidebar_summary(meta_display, total):
+    """Contexto visual del dashboard inspirado en la referencia."""
+    meta_kpis = extraer_kpis_meta(meta_display or {}, {})
+    pais = meta_kpis.get("pais", "N/A")
+    cartera = meta_kpis.get("cartera", "N/A")
+    tipo = meta_kpis.get("tipo_endogena", "N/A")
+    modo = meta_kpis.get("modo_endogena", "N/A")
+    fwl_range = f"{meta_kpis.get('fwl_min', '?')} - {meta_kpis.get('fwl_max', '?')}"
+
+    st.markdown(f"""
+    <div class="dashboard-sidebar">
+        <p class="dash-side-title">Archivo cargado</p>
+        <div class="dash-side-item" style="padding-top:3px;">
+            <div class="dash-icon">✓</div>
+            <div>
+                <span class="dash-side-value">Modelos cargados</span>
+                <span class="dash-side-label">{total} modelos disponibles</span>
+            </div>
+        </div>
+        <div style="height:10px;"></div>
+        <p class="dash-side-title">Contexto de la corrida</p>
+        <div class="dash-side-item">
+            <div class="dash-icon">◉</div>
+            <div><span class="dash-side-value">{pais}</span><span class="dash-side-label">País</span></div>
+        </div>
+        <div class="dash-side-item">
+            <div class="dash-icon">▣</div>
+            <div><span class="dash-side-value">{cartera}</span><span class="dash-side-label">Cartera</span></div>
+        </div>
+        <div class="dash-side-item">
+            <div class="dash-icon">⌁</div>
+            <div><span class="dash-side-value">{tipo}</span><span class="dash-side-label">Tipo endógena</span></div>
+        </div>
+        <div class="dash-side-item">
+            <div class="dash-icon">◉</div>
+            <div><span class="dash-side-value">{modo}</span><span class="dash-side-label">Modo endógena</span></div>
+        </div>
+        <div class="dash-side-item">
+            <div class="dash-icon">↔</div>
+            <div><span class="dash-side-value">{fwl_range}</span><span class="dash-side-label">Rango FWL</span></div>
+        </div>
+        <div class="dash-side-item">
+            <div class="dash-icon">▤</div>
+            <div><span class="dash-side-value">{meta_kpis.get('ventana_mm', 'N/A')}</span><span class="dash-side-label">Ventana mensual</span></div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 def render_leyenda_scores():
     html = f"""
@@ -951,10 +1038,13 @@ def graficar_macros_estatico(doc_data, output_path):
     if df.empty:
         return None
 
+    # Detectar variables exógenas base (sin sufijo _BASE/_ADVERSO/_OPTIMISTA)
     escenarios = ["_BASE", "_ADVERSO", "_OPTIMISTA"]
+    # Paleta corporativa del app (misma que Base/Adverso/Optimista en Plotly)
     colores_esc = {"_BASE": BLUE, "_ADVERSO": RED, "_OPTIMISTA": GREEN}
     nombres_esc = {"_BASE": "Base", "_ADVERSO": "Adverso", "_OPTIMISTA": "Optimista"}
 
+    # Identificar variables base únicas
     vars_base = set()
     for col in df.columns:
         if col == fecha_col:
@@ -971,6 +1061,8 @@ def graficar_macros_estatico(doc_data, output_path):
         return None
 
     n_vars = len(vars_base)
+
+    # Una variable por fila (apiladas verticalmente) para que se vean bien en el PDF
     n_cols = 1
     n_rows = n_vars
 
@@ -1015,6 +1107,7 @@ def graficar_macros_estatico(doc_data, output_path):
         for spine in ax.spines.values():
             spine.set_color(BORDER)
 
+    # Ocultar ejes sobrantes
     for idx in range(n_vars, len(axes)):
         axes[idx].set_visible(False)
 
@@ -1022,14 +1115,13 @@ def graficar_macros_estatico(doc_data, output_path):
     plt.tight_layout()
     try:
         plt.savefig(output_path, dpi=150, bbox_inches="tight", facecolor=WHITE)
-        plt.close(fig)
-    except Exception:
-        plt.close(fig)
-        return None
+    finally:
+        plt.close("all")
     return output_path
 
 
 def graficar_fwl_estatico(doc_data, output_path):
+    """Genera gráfica del Factor FWL a 12 meses con matplotlib."""
     df_fwl = doc_data.get("data_fwl_12m")
     if df_fwl is None or df_fwl.empty:
         return None
@@ -1072,13 +1164,12 @@ def graficar_fwl_estatico(doc_data, output_path):
     plt.tight_layout()
     try:
         plt.savefig(output_path, dpi=150, bbox_inches="tight")
-        plt.close(fig)
-    except Exception:
-        plt.close(fig)
-        return None
+    finally:
+        plt.close("all")
     return output_path
 
 def graficar_historico_estatico(doc_data, output_path):
+    """Genera gráfica de la endógena histórica/proyectada con matplotlib."""
     df_end = doc_data.get("data_endogena")
     endogena_cols = doc_data.get("endogenas_cols", ["BASE", "ADVERSO", "OPTIMISTA"])
     if df_end is None or df_end.empty:
@@ -1126,13 +1217,104 @@ def graficar_historico_estatico(doc_data, output_path):
     plt.tight_layout()
     try:
         plt.savefig(output_path, dpi=150, bbox_inches="tight")
-        plt.close(fig)
-    except Exception:
-        plt.close(fig)
-        return None
+    finally:
+        plt.close("all")
     return output_path
 
+def texto_ljungbox(score: str, p: float) -> str:
+    if score == "A":
+        return (
+            "No se detecta autocorrelación significativa en los residuos (p > 0.10). El "
+            "modelo ha capturado adecuadamente la estructura temporal de la serie, por lo "
+            "que no hay evidencia de patrones no explicados en los errores de predicción. "
+            "Esto valida que los componentes AR y MA seleccionados son suficientes para "
+            "modelar la dependencia temporal."
+        )
+    elif score == "B":
+        return (
+            "No existe evidencia concluyente de autocorrelación residual (0.05 < p ≤ 0.10). "
+            "Aunque el estadístico se acerca al umbral de significancia, el modelo "
+            "mantiene un comportamiento aceptable y no se requieren ajustes estructurales "
+            "inmediatos. Se recomienda monitorear en corridas posteriores."
+        )
+    elif score == "C":
+        return (
+            "Se detecta evidencia débil de autocorrelación en los residuos (p ≤ 0.05). "
+            "Esto sugiere que podría existir una estructura temporal no capturada por el "
+            "modelo actual. Se recomienda evaluar la inclusión de rezagos adicionales o "
+            "revisar la especificación ARMA (aumentar p o q)."
+        )
+    else:  # D
+        return (
+            "Se detecta autocorrelación significativa en los residuos (p ≤ 0.01). El "
+            "modelo NO está capturando adecuadamente la dinámica temporal de la serie, lo "
+            "que puede generar predicciones sesgadas e intervalos de confianza inválidos. "
+            "Se requiere reespecificación urgente del modelo (revisar órdenes AR/MA o "
+            "considerar estacionalidad)."
+        )
+
+def texto_jarquebera(score: str, p: float) -> str:
+    if score == "A":
+        return (
+            "Los residuos siguen una distribución normal (p > 0.10). Esto valida el uso "
+            "de intervalos de confianza estándar y garantiza la validez de las inferencias "
+            "estadísticas derivadas del modelo. Los errores no presentan asimetría ni "
+            "curtosis problemáticas."
+        )
+    elif score == "B":
+        return (
+            "No se encuentra evidencia concluyente de no-normalidad (0.05 < p ≤ 0.10). "
+            "La distribución de los errores es suficientemente simétrica para mantener la "
+            "confiabilidad de las proyecciones, aunque se sugiere monitoreo periódico."
+        )
+    elif score == "C":
+        return (
+            "Se detecta evidencia débil de no-normalidad en los residuos (p ≤ 0.05). La "
+            "presencia de asimetría o curtosis atípica puede afectar la precisión de los "
+            "intervalos de predicción extremos. Se sugiere monitorear especialmente los "
+            "escenarios adverso y optimista."
+        )
+    else:  # D
+        return (
+            "Los residuos presentan desviaciones significativas de la normalidad (p ≤ 0.01): "
+            "asimetría y/o curtosis extrema. Esto invalida los intervalos de confianza "
+            "clásicos y puede indicar la presencia de valores atípicos no modelados o una "
+            "especificación incorrecta. Se recomienda transformar la variable (ej. logit) "
+            "o utilizar métodos robustos."
+        )
+
+def texto_hetero(score: str, p: float) -> str:
+    if score == "A":
+        return (
+            "No se detecta heterocedasticidad (p > 0.10). La varianza de los residuos es "
+            "constante a lo largo del tiempo, cumpliendo con el supuesto de homocedasticidad "
+            "requerido para la inferencia válida del modelo. Los errores estándar de los "
+            "coeficientes son confiables."
+        )
+    elif score == "B":
+        return (
+            "No existe evidencia concluyente de varianza no constante (0.05 < p ≤ 0.10). "
+            "El modelo mantiene estabilidad en la dispersión de los errores a través de la "
+            "muestra. No se requieren correcciones adicionales."
+        )
+    elif score == "C":
+        return (
+            "Se detecta evidencia débil de heterocedasticidad (p ≤ 0.05). La varianza de "
+            "los errores presenta cambios moderados en el tiempo, lo que puede afectar la "
+            "eficiencia de los estimadores. Se sugiere considerar modelos ARCH/GARCH para "
+            "la volatilidad o utilizar errores estándar robustos (White)."
+        )
+    else:  # D
+        return (
+            "Se confirma heterocedasticidad significativa (p ≤ 0.01). La varianza de los "
+            "residuos NO es constante, lo que genera estimadores ineficientes y errores "
+            "estándar sesgados. Las proyecciones pueden subestimar o sobrestimar el riesgo "
+            "en diferentes períodos. Se requiere corrección: errores estándar robustos o "
+            "modelos de varianza condicional (ARCH/GARCH)."
+        )
+
 def conclusion_score_global_pdf(s: float) -> str:
+    """Retorna solo la conclusión larga para el PDF."""
     if s >= 7:
         return (
             "El modelo presenta un desempeño general satisfactorio. Los diagnósticos "
@@ -1155,10 +1337,16 @@ def conclusion_score_global_pdf(s: float) -> str:
             "con score D y, de ser posible, los score C."
         )
 
-# -----------------------------------------------------------------------------
-# GENERACIÓN DEL PDF (refactorizada en subfunciones)
-# -----------------------------------------------------------------------------
+
+# =============================================================================
+# GENERADOR DE PDF CON REPORTLAB
+# =============================================================================
+
 def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_fwl: str = None, ruta_imagen_historico: str = None) -> bytes:
+    """
+    Genera el documento metodológico completo en PDF usando reportlab.
+    Consume la estructura exacta devuelta por recolectar_datos_documento().
+    """
     import io
     import os
     from reportlab.lib import colors
@@ -1183,27 +1371,84 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
     )
 
     styles = getSampleStyleSheet()
+
+    # Paleta corporativa (misma que el dashboard: NAVY/BLUE/GREEN/RED)
     NAVY_CORP = colors.HexColor(NAVY)
     AZUL_CORP = colors.HexColor(BLUE)
     VERDE_CORP = colors.HexColor(GREEN)
     ROJO_CORP = colors.HexColor(RED)
-    AMBAR_CORP = colors.HexColor("#B8860B")
+    AMBAR_CORP = colors.HexColor("#B8860B")   # mismo tono que Score C / REGULAR en el app
     GRIS_OSCURO = colors.HexColor(TEXT)
     GRIS_CLARO = colors.HexColor(TINT)
     BLANCO = colors.white
 
-    estilo_titulo = ParagraphStyle("TituloDoc", parent=styles["Heading1"], fontSize=22, leading=26,
-                                   textColor=NAVY_CORP, alignment=TA_CENTER, spaceAfter=20, fontName="Helvetica-Bold")
-    estilo_subtitulo = ParagraphStyle("SubtituloDoc", parent=styles["Heading2"], fontSize=14, leading=18,
-                                      textColor=GRIS_OSCURO, alignment=TA_CENTER, spaceAfter=30, fontName="Helvetica")
-    estilo_seccion = ParagraphStyle("SeccionDoc", parent=styles["Heading2"], fontSize=16, leading=20,
-                                    textColor=NAVY_CORP, spaceBefore=20, spaceAfter=12, fontName="Helvetica-Bold")
-    estilo_subseccion = ParagraphStyle("SubseccionDoc", parent=styles["Heading3"], fontSize=12, leading=15,
-                                       textColor=GRIS_OSCURO, spaceBefore=12, spaceAfter=8, fontName="Helvetica-Bold")
-    estilo_cuerpo = ParagraphStyle("CuerpoDoc", parent=styles["BodyText"], fontSize=10, leading=14,
-                                   textColor=GRIS_OSCURO, alignment=TA_JUSTIFY, spaceAfter=10, fontName="Helvetica")
-    estilo_nota = ParagraphStyle("NotaDoc", parent=styles["BodyText"], fontSize=9, leading=12,
-                                 textColor=colors.grey, alignment=TA_LEFT, spaceAfter=8, fontName="Helvetica-Oblique")
+    estilo_titulo = ParagraphStyle(
+        "TituloDoc",
+        parent=styles["Heading1"],
+        fontSize=22,
+        leading=26,
+        textColor=NAVY_CORP,
+        alignment=TA_CENTER,
+        spaceAfter=20,
+        fontName="Helvetica-Bold"
+    )
+
+    estilo_subtitulo = ParagraphStyle(
+        "SubtituloDoc",
+        parent=styles["Heading2"],
+        fontSize=14,
+        leading=18,
+        textColor=GRIS_OSCURO,
+        alignment=TA_CENTER,
+        spaceAfter=30,
+        fontName="Helvetica"
+    )
+
+    estilo_seccion = ParagraphStyle(
+        "SeccionDoc",
+        parent=styles["Heading2"],
+        fontSize=16,
+        leading=20,
+        textColor=NAVY_CORP,
+        spaceBefore=20,
+        spaceAfter=12,
+        fontName="Helvetica-Bold",
+        leftIndent=0
+    )
+
+    estilo_subseccion = ParagraphStyle(
+        "SubseccionDoc",
+        parent=styles["Heading3"],
+        fontSize=12,
+        leading=15,
+        textColor=GRIS_OSCURO,
+        spaceBefore=12,
+        spaceAfter=8,
+        fontName="Helvetica-Bold"
+    )
+
+    estilo_cuerpo = ParagraphStyle(
+        "CuerpoDoc",
+        parent=styles["BodyText"],
+        fontSize=10,
+        leading=14,
+        textColor=GRIS_OSCURO,
+        alignment=TA_JUSTIFY,
+        spaceAfter=10,
+        fontName="Helvetica"
+    )
+
+    estilo_nota = ParagraphStyle(
+        "NotaDoc",
+        parent=styles["BodyText"],
+        fontSize=9,
+        leading=12,
+        textColor=colors.grey,
+        alignment=TA_LEFT,
+        spaceAfter=8,
+        fontName="Helvetica-Oblique"
+    )
+
     estilo_score_a = ParagraphStyle("ScoreA", parent=estilo_cuerpo, textColor=VERDE_CORP, fontName="Helvetica-Bold")
     estilo_score_b = ParagraphStyle("ScoreB", parent=estilo_cuerpo, textColor=AZUL_CORP, fontName="Helvetica-Bold")
     estilo_score_c = ParagraphStyle("ScoreC", parent=estilo_cuerpo, textColor=AMBAR_CORP, fontName="Helvetica-Bold")
@@ -1230,7 +1475,11 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
             ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
         ])
 
-    # Extraer datos
+    story = []
+
+    # ------------------------------------------------------------------
+    # Extraer datos de doc_data
+    # ------------------------------------------------------------------
     nombre_modelo = doc_data.get("nombre_modelo", "N/A")
     meta_kpis = doc_data.get("meta_kpis", {})
     meta_ctx = doc_data.get("meta_contexto", {})
@@ -1243,6 +1492,7 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
         conclusion_global = conclusion_score_global_pdf(score_global)
     diagnosticos = doc_data.get("diagnosticos", [])
     coeficientes = doc_data.get("coeficientes", [])
+    exogenas_list = doc_data.get("exogenas", [])
     ar_count = doc_data.get("ar_count", 0)
     ma_count = doc_data.get("ma_count", 0)
     observaciones = doc_data.get("observaciones", 0)
@@ -1266,15 +1516,17 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
         "trend_modelo": meta_ctx.get("motor_trend", "N/A"),
     }
 
+    # Buscar diagnósticos por nombre
     diag_map = {}
     for d in diagnosticos:
-        nom = str(d.get("prueba", "")).lower()
-        if "ljung" in nom or "box" in nom:
+        nombre_prueba = str(d.get("prueba", "")).lower()
+        if "ljung" in nombre_prueba or "box" in nombre_prueba:
             diag_map["ljung_box"] = d
-        elif "jarque" in nom or "bera" in nom:
+        elif "jarque" in nombre_prueba or "bera" in nombre_prueba:
             diag_map["jarque_bera"] = d
-        elif "hetero" in nom or "arch" in nom:
+        elif "hetero" in nombre_prueba or "arch" in nombre_prueba:
             diag_map["heterocedasticidad"] = d
+
     lb = diag_map.get("ljung_box", {})
     jb = diag_map.get("jarque_bera", {})
     ht = diag_map.get("heterocedasticidad", {})
@@ -1285,13 +1537,14 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
         except:
             return str(v)
 
-    story = []
-
-    # ---- PORTADA ----
+    # =====================================================================
+    # PORTADA
+    # =====================================================================
     story.append(Spacer(1, 1.5 * inch))
     story.append(Paragraph("Documento Metodológico", estilo_titulo))
     story.append(Paragraph("Modelo SARIMAX — Proyección IFRS 9", estilo_subtitulo))
     story.append(Spacer(1, 0.3 * inch))
+
     datos_portada = [
         ["Modelo seleccionado:", nombre_modelo],
         ["Fecha de generación:", fecha_gen],
@@ -1318,23 +1571,31 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
     story.append(tabla_portada)
     story.append(PageBreak())
 
-    # ---- SECCIÓN 0: RESUMEN DEL MODELO ----
+    # =====================================================================
+    # SECCIÓN 0 — RESUMEN DEL MODELO
+    # =====================================================================
     story.append(Paragraph("Resumen del Modelo", estilo_seccion))
-    story.append(Paragraph("Esta sección presenta una vista consolidada del modelo seleccionado, incluyendo el factor FWL, los diagnósticos estadísticos, los coeficientes estimados y la estructura del modelo.", estilo_cuerpo))
+    story.append(Paragraph(
+        "Esta sección presenta una vista consolidada del modelo seleccionado, incluyendo el factor FWL, "
+        "los diagnósticos estadísticos, los coeficientes estimados y la estructura del modelo.",
+        estilo_cuerpo
+    ))
     story.append(Spacer(1, 0.1 * inch))
 
-    # Gráfica histórica
+    # 0.0 Evolución histórica y proyectada de la endógena
     story.append(Paragraph("Evolución Histórica y Proyectada", estilo_subseccion))
     if ruta_imagen_historico and os.path.exists(ruta_imagen_historico):
         try:
             from PIL import Image as PILImage
             with PILImage.open(ruta_imagen_historico) as im:
-                img_w, img_h = im.size
-            aspecto = img_h / img_w
-            ancho = 6.5 * inch
+                img_w_px, img_h_px = im.size
+            aspecto = img_h_px / img_w_px
+            ancho_max = 6.5 * inch
+            alto_max = 4.5 * inch
+            ancho = ancho_max
             alto = ancho * aspecto
-            if alto > 4.5 * inch:
-                alto = 4.5 * inch
+            if alto > alto_max:
+                alto = alto_max
                 ancho = alto / aspecto
             story.append(Image(ruta_imagen_historico, width=ancho, height=alto))
         except Exception:
@@ -1343,15 +1604,16 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
         story.append(Paragraph("[Gráfica histórica no disponible]", estilo_nota))
     story.append(Spacer(1, 0.15 * inch))
 
-    # FWL
+    # 0.1 Factor FWL a 12 meses
     story.append(Paragraph("Factor FWL a 12 Meses", estilo_subseccion))
     if ruta_imagen_fwl and os.path.exists(ruta_imagen_fwl):
-        story.append(Image(ruta_imagen_fwl, width=6.5 * inch, height=3 * inch))
+        img_fwl = Image(ruta_imagen_fwl, width=6.5 * inch, height=3 * inch)
+        story.append(img_fwl)
     else:
         story.append(Paragraph("[Gráfica FWL no disponible]", estilo_nota))
     story.append(Spacer(1, 0.15 * inch))
 
-    # Diagnósticos resumidos
+    # 0.2 Diagnósticos resumidos
     story.append(Paragraph("Diagnósticos Estadísticos", estilo_subseccion))
     diag_resumen = [
         ["Prueba", "Score", "p-valor", "Estadístico"],
@@ -1366,21 +1628,21 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
     story.append(tabla_diag)
     story.append(Spacer(1, 0.15 * inch))
 
-    # Coeficientes
+    # 0.3 Coeficientes del modelo
     story.append(Paragraph("Coeficientes del Modelo", estilo_subseccion))
     coef_data = [["Variable", "Coeficiente", "p-value", "Tipo"]]
     coef_count = 0
     for row in coeficientes:
         coef_count += 1
         pval = row.get("p_value")
-        coef_val = row.get("coeficiente")
         coef_data.append([
             str(row.get("variable", "N/A")),
-            f"{float(coef_val):.6f}" if coef_val is not None else "N/A",
+            f"{float(row.get('coeficiente', 0)):.6f}" if row.get('coeficiente') is not None else "N/A",
             fmt_num(pval),
             str(row.get("tipo", "N/A"))
         ])
     if coef_count > 0:
+        # Truncar nombres de variables muy largos para evitar desbordamiento
         for row in coef_data[1:]:
             row[0] = truncar_texto(row[0], max_len=42)
         tabla_coef = Table(coef_data, colWidths=[3.2 * inch, 1.1 * inch, 1.0 * inch, 0.9 * inch])
@@ -1390,7 +1652,7 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
         story.append(Paragraph("No hay datos de coeficientes.", estilo_cuerpo))
     story.append(Spacer(1, 0.15 * inch))
 
-    # Estructura
+    # 0.4 Estructura del modelo
     story.append(Paragraph("Estructura del Modelo", estilo_subseccion))
     exo_sig_count = sum(1 for row in coeficientes if row.get("tipo") == "Exogena")
     struct_data = [
@@ -1407,8 +1669,11 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
     story.append(tabla_struct)
     story.append(PageBreak())
 
-    # ---- SECCIÓN 1: METODOLOGÍA ----
+    # =====================================================================
+    # SECCIÓN 1 — METODOLOGÍA SARIMAX (separada por bloques)
+    # =====================================================================
     story.append(Paragraph("1. Metodología SARIMAX", estilo_seccion))
+
     story.append(Paragraph(
         "El modelo SARIMAX (Seasonal AutoRegressive Integrated Moving Average with eXogenous regressors) "
         "es una extensión del modelo ARIMA que incorpora componentes estacionales y variables exógenas. "
@@ -1424,93 +1689,128 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
     ))
     story.append(Spacer(1, 0.1 * inch))
 
-    # Bloques 1-10 (resumidos)
-    bloques = [
-        ("1.1 Identificación de Variables", 
-         "El proceso inicia con la carga de cuatro archivos base: (1) ENDÓGENA, que contiene la fecha, la variable "
-         "dependiente y las n exógenas históricas; (2) EXO_BAS, con las proyecciones base de las exógenas; "
-         "(3) EXO_ADV, con las proyecciones adversas; y (4) EXO_OPT, con las proyecciones optimistas. "
-         "El motor detecta automáticamente la columna de fecha, el orden temporal (mensual, trimestral o anual), "
-         "el nombre de la endógena (segunda columna) y las exógenas (desde la tercera columna en adelante). "
-         "Se valida que los escenarios mantengan el mismo orden de variables que el histórico y que la proyección "
-         "sea una continuación inmediata del histórico (sin huecos temporales)."),
-        ("1.2 Bloque 1 — Exógenas: Estacionariedad y Diferenciación",
-         "Se aplica la prueba Augmented Dickey-Fuller (ADF) a cada exógena para encontrar el orden mínimo "
-         "de diferenciación (d) que la vuelve estacionaria. Cada exógena puede tener su propia d, lo que "
-         "permite flexibilidad en el tratamiento de variables con diferentes propiedades de persistencia. "
-         "Una serie estacionaria tiene media y varianza constantes en el tiempo, propiedad fundamental para "
-         "la validez de las inferencias del modelo. El resultado de este bloque es un vector dinámico de exógenas "
-         "ya diferenciadas (var_exogenas_diff) y un diccionario con la d aplicada por variable (var_exogenas_d), "
-         "necesario para revertir la diferenciación en el forecast."),
-        ("1.3 Bloque 2 — Endógena: Tipo y Diferenciación",
-         "Se evalúan dos transformaciones posibles para la variable dependiente: (a) Original (total): la serie "
-         "en su escala natural, útil cuando la variable no está acotada; y (b) Logit: transformación logit(y) = ln(y/(1-y)), "
-         "aplicable cuando la variable está acotada entre 0 y 1 (ej. tasas de morosidad). La transformación logit evita "
-         "proyecciones fuera del rango lógico. Para cada opción se ejecuta la prueba ADF y se selecciona la que sea "
-         "estacionaria con d ≤ 1, priorizando la parsimonia del modelo. El resultado es la endógena final ya "
-         "diferenciada (var_endogena_diff), junto con los órdenes AR(p) y MA(q) candidatos (VALORES_P y VALORES_Q) "
-         "que alimentarán el motor de combinaciones."),
-        ("1.4 Bloque 3 — Lags: Correlograma Cruzado",
-         "Mediante correlograma cruzado entre la endógena diferenciada y cada exógena diferenciada, se sugiere "
-         "el rezago óptimo para cada variable. Este proceso respeta el signo económico esperado (positivo o negativo) "
-         "configurado por el analista en la lista SIGNOS_EXOGENAS, garantizando que la relación entre la cartera y "
-         "cada macro sea teóricamente coherente. El flujo contempla tres escenarios: (1) si hay lags significativos que "
-         "siguen el signo esperado, se toman los N más significativos; (2) si ninguno es significativo pero siguen el signo, "
-         "se toma el más cercano; (3) si no sigue el signo, se toma un solo lag, el más significativo. El resultado es un "
-         "diccionario {exógena: [lags]} (lags_por_exogena) que alimenta el Bloque 5."),
-        ("1.5 Bloque 4 — Dummies: Variables Opcionales",
-         "Este bloque es opcional y permite generar variables dummy (vectores de 0 y 1) a partir de un rango de "
-         "fechas (inicio y fin). Cada dummy vale 1 dentro del período definido y 0 fuera de él. Estas variables se "
-         "construyen sobre el índice completo (histórico + proyección) para que sirvan tanto al ajuste como al forecast. "
-         "Si no se definen dummies, el Bloque 5 entiende que no aplican y no las incluye en las combinaciones. "
-         "Ejemplos típicos incluyen eventos excepcionales como la pandemia COVID-19 o crisis financieras."),
-        ("1.6 Bloque 5 — Combinaciones: Motor SARIMAX y Filtrado",
-         "El motor central genera todas las combinaciones posibles de modelos SARIMAX guiadas por los bloques "
-         "anteriores. Las reglas de combinación son: subconjuntos de exógenas (máximo N por modelo, definido por "
-         "MAX_EXOG_POR_MODELO); cada exógena entra con un solo lag (exclusivo, según Bloque 3); órdenes AR(p) "
-         "y MA(q) candidatos (Bloque 2); y con/sin dummy (Bloque 4). Para cada especificación se ajusta un SARIMAX(p,0,q) "
-         "sobre el histórico recortado a la ventana definida. Los modelos se filtran por: (a) VIF < VIF_MAX para controlar "
-         "multicolinealidad; (b) signos de coeficientes coherentes con la teoría económica (estricto); (c) modelos con p=0 "
-         "se marcan para revisión pero no se descartan automáticamente. El resultado es una lista de modelos aceptados "
-         "(modelos_aceptados) ordenados por AIC."),
-        ("1.7 Bloque 6 — Forecast: Proyección de Modelos Aceptados",
-         "Se proyecta cada modelo aceptado sobre los tres escenarios (BAS/ADV/OPT). La transformación consistente "
-         "de las exógenas es clave: para cada exógena se diferencia la serie [histórico + proyección] con su misma d "
-         "(Bloque 1) y se aplica el mismo lag del modelo, de modo que la primera proyección enlaza con el último histórico. "
-         "Luego se revierte la diferenciación de la endógena (integración) y, si aplica, la transformación logit (inversa: "
-         "y = 1/(1+exp(-x))). Se aplica bloqueo de solapamiento para evitar que escenarios laterales (ADV/OPT) crucen al "
-         "base, garantizando el orden económico Adverso ≤ Base ≤ Optimista (o viceversa según la variable). El resultado "
-         "es un diccionario {id_modelo: DataFrame[BAS, ADV, OPT]} en la escala original de la endógena."),
-        ("1.8 Bloque 7 — Ordenamiento: Sensibilidad y Filtrado Final",
-         "Se descartan los modelos de baja sensibilidad: aquellos cuyas proyecciones de optimista y adverso se parecen "
-         "demasiado (no diferencian los escenarios). La métrica es |media(OPT) − media(ADV)| sobre el horizonte de "
-         "proyección. Se aplican cuatro filtros adicionales: (1) sensibilidad ≥ UMBRAL_SENSIBILIDAD; (2) sin outliers: "
-         "todo el forecast dentro de media_hist ± K·std_hist; (3) significancia: al menos una exógena con p-value ≤ 0.05; "
-         "(4) factor FWL: todos los factores (forecast / última PD observada) dentro del rango [FWL_FACTOR_MIN, FWL_FACTOR_MAX]. "
-         "Los modelos que pasan todos los filtros se ordenan de mayor a menor sensibilidad y constituyen la variable final "
-         "modelos_finales, insumo del Bloque 8."),
-        ("1.9 Bloque 8 — Exportación: Excel de Modelos Finales",
-         "Se exportan los primeros TOP_EXPORTAR modelos de modelos_finales a un archivo .xlsx, una hoja por modelo. "
-         "Cada hoja replica la estructura de trazabilidad completa: endógena (histórico + forecast de los 3 escenarios); "
-         "exógenas del modelo (nivel histórico común + 3 escenarios); FWL a 12 meses (factor nivel / último histórico); "
-         "Factor FWL por Año (resumen de diciembre de cada año); residuos individuales y resumen de distribución; "
-         "coeficientes del modelo (con p-values); y pruebas estadísticas (Ljung-Box, Jarque-Bera, ARCH). Además, se "
-         "embebe metadata de trazabilidad en las propiedades del workbook (país, cartera, parámetros del motor, etc.)."),
-        ("1.10 Bloque 9 — Reporte CSV: Factores de Impacto",
-         "Este bloque genera un reporte .csv de factores de impacto (forecast / última PD observada) para un único "
-         "modelo elegido por su id, en los escenarios BAS, ADV, OPT y ORI (constante = 1). El factor se extiende de forma "
-         "plana hasta una fecha de corte configurable (por defecto 2100-12-01). Previamente, una celda auxiliar (B9.1) "
-         "evalúa los modelos exportados y muestra un top de candidatos cuyos factores FWL estén dentro o más cerca "
-         "del rango objetivo [FWL_RANGO_MIN, FWL_RANGO_MAX], facilitando la selección del modelo a reportar.")
-    ]
-    for titulo, texto in bloques:
-        story.append(Paragraph(titulo, estilo_subseccion))
-        story.append(Paragraph(texto, estilo_cuerpo))
-        story.append(Spacer(1, 0.05 * inch))
+    story.append(Paragraph("1.1 Identificación de Variables", estilo_subseccion))
+    story.append(Paragraph(
+        "El proceso inicia con la carga de cuatro archivos base: (1) ENDÓGENA, que contiene la fecha, la variable "
+        "dependiente y las n exógenas históricas; (2) EXO_BAS, con las proyecciones base de las exógenas; "
+        "(3) EXO_ADV, con las proyecciones adversas; y (4) EXO_OPT, con las proyecciones optimistas. "
+        "El motor detecta automáticamente la columna de fecha, el orden temporal (mensual, trimestral o anual), "
+        "el nombre de la endógena (segunda columna) y las exógenas (desde la tercera columna en adelante). "
+        "Se valida que los escenarios mantengan el mismo orden de variables que el histórico y que la proyección "
+        "sea una continuación inmediata del histórico (sin huecos temporales).",
+        estilo_cuerpo
+    ))
+
+    story.append(Paragraph("1.2 Bloque 1 — Exógenas: Estacionariedad y Diferenciación", estilo_subseccion))
+    story.append(Paragraph(
+        "Se aplica la prueba Augmented Dickey-Fuller (ADF) a cada exógena para encontrar el orden mínimo "
+        "de diferenciación (d) que la vuelve estacionaria. Cada exógena puede tener su propia d, lo que "
+        "permite flexibilidad en el tratamiento de variables con diferentes propiedades de persistencia. "
+        "Una serie estacionaria tiene media y varianza constantes en el tiempo, propiedad fundamental para "
+        "la validez de las inferencias del modelo. El resultado de este bloque es un vector dinámico de exógenas "
+        "ya diferenciadas (var_exogenas_diff) y un diccionario con la d aplicada por variable (var_exogenas_d), "
+        "necesario para revertir la diferenciación en el forecast.",
+        estilo_cuerpo
+    ))
+
+    story.append(Paragraph("1.3 Bloque 2 — Endógena: Tipo y Diferenciación", estilo_subseccion))
+    story.append(Paragraph(
+        "Se evalúan dos transformaciones posibles para la variable dependiente: (a) Original (total): la serie "
+        "en su escala natural, útil cuando la variable no está acotada; y (b) Logit: transformación logit(y) = ln(y/(1-y)), "
+        "aplicable cuando la variable está acotada entre 0 y 1 (ej. tasas de morosidad). La transformación logit evita "
+        "proyecciones fuera del rango lógico. Para cada opción se ejecuta la prueba ADF y se selecciona la que sea "
+        "estacionaria con d ≤ 1, priorizando la parsimonia del modelo. El resultado es la endógena final ya "
+        "diferenciada (var_endogena_diff), junto con los órdenes AR(p) y MA(q) candidatos (VALORES_P y VALORES_Q) "
+        "que alimentarán el motor de combinaciones.",
+        estilo_cuerpo
+    ))
+
+    story.append(Paragraph("1.4 Bloque 3 — Lags: Correlograma Cruzado", estilo_subseccion))
+    story.append(Paragraph(
+        "Mediante correlograma cruzado entre la endógena diferenciada y cada exógena diferenciada, se sugiere "
+        "el rezago óptimo para cada variable. Este proceso respeta el signo económico esperado (positivo o negativo) "
+        "configurado por el analista en la lista SIGNOS_EXOGENAS, garantizando que la relación entre la cartera y "
+        "cada macro sea teóricamente coherente. El flujo contempla tres escenarios: (1) si hay lags significativos que "
+        "siguen el signo esperado, se toman los N más significativos; (2) si ninguno es significativo pero siguen el signo, "
+        "se toma el más cercano; (3) si no sigue el signo, se toma un solo lag, el más significativo. El resultado es un "
+        "diccionario {exógena: [lags]} (lags_por_exogena) que alimenta el Bloque 5.",
+        estilo_cuerpo
+    ))
+
+    story.append(Paragraph("1.5 Bloque 4 — Dummies: Variables Opcionales", estilo_subseccion))
+    story.append(Paragraph(
+        "Este bloque es opcional y permite generar variables dummy (vectores de 0 y 1) a partir de un rango de "
+        "fechas (inicio y fin). Cada dummy vale 1 dentro del período definido y 0 fuera de él. Estas variables se "
+        "construyen sobre el índice completo (histórico + proyección) para que sirvan tanto al ajuste como al forecast. "
+        "Si no se definen dummies, el Bloque 5 entiende que no aplican y no las incluye en las combinaciones. "
+        "Ejemplos típicos incluyen eventos excepcionales como la pandemia COVID-19 o crisis financieras.",
+        estilo_cuerpo
+    ))
+
+    story.append(Paragraph("1.6 Bloque 5 — Combinaciones: Motor SARIMAX y Filtrado", estilo_subseccion))
+    story.append(Paragraph(
+        "El motor central genera todas las combinaciones posibles de modelos SARIMAX guiadas por los bloques "
+        "anteriores. Las reglas de combinación son: subconjuntos de exógenas (máximo N por modelo, definido por "
+        "MAX_EXOG_POR_MODELO); cada exógena entra con un solo lag (exclusivo, según Bloque 3); órdenes AR(p) "
+        "y MA(q) candidatos (Bloque 2); y con/sin dummy (Bloque 4). Para cada especificación se ajusta un SARIMAX(p,0,q) "
+        "sobre el histórico recortado a la ventana definida. Los modelos se filtran por: (a) VIF < VIF_MAX para controlar "
+        "multicolinealidad; (b) signos de coeficientes coherentes con la teoría económica (estricto); (c) modelos con p=0 "
+        "se marcan para revisión pero no se descartan automáticamente. El resultado es una lista de modelos aceptados "
+        "(modelos_aceptados) ordenados por AIC.",
+        estilo_cuerpo
+    ))
+
+    story.append(Paragraph("1.7 Bloque 6 — Forecast: Proyección de Modelos Aceptados", estilo_subseccion))
+    story.append(Paragraph(
+        "Se proyecta cada modelo aceptado sobre los tres escenarios (BAS/ADV/OPT). La transformación consistente "
+        "de las exógenas es clave: para cada exógena se diferencia la serie [histórico + proyección] con su misma d "
+        "(Bloque 1) y se aplica el mismo lag del modelo, de modo que la primera proyección enlaza con el último histórico. "
+        "Luego se revierte la diferenciación de la endógena (integración) y, si aplica, la transformación logit (inversa: "
+        "y = 1/(1+exp(-x))). Se aplica bloqueo de solapamiento para evitar que escenarios laterales (ADV/OPT) crucen al "
+        "base, garantizando el orden económico Adverso ≤ Base ≤ Optimista (o viceversa según la variable). El resultado "
+        "es un diccionario {id_modelo: DataFrame[BAS, ADV, OPT]} en la escala original de la endógena.",
+        estilo_cuerpo
+    ))
+
+    story.append(Paragraph("1.8 Bloque 7 — Ordenamiento: Sensibilidad y Filtrado Final", estilo_subseccion))
+    story.append(Paragraph(
+        "Se descartan los modelos de baja sensibilidad: aquellos cuyas proyecciones de optimista y adverso se parecen "
+        "demasiado (no diferencian los escenarios). La métrica es |media(OPT) − media(ADV)| sobre el horizonte de "
+        "proyección. Se aplican cuatro filtros adicionales: (1) sensibilidad ≥ UMBRAL_SENSIBILIDAD; (2) sin outliers: "
+        "todo el forecast dentro de media_hist ± K·std_hist; (3) significancia: al menos una exógena con p-value ≤ 0.05; "
+        "(4) factor FWL: todos los factores (forecast / última PD observada) dentro del rango [FWL_FACTOR_MIN, FWL_FACTOR_MAX]. "
+        "Los modelos que pasan todos los filtros se ordenan de mayor a menor sensibilidad y constituyen la variable final "
+        "modelos_finales, insumo del Bloque 8.",
+        estilo_cuerpo
+    ))
+
+    story.append(Paragraph("1.9 Bloque 8 — Exportación: Excel de Modelos Finales", estilo_subseccion))
+    story.append(Paragraph(
+        "Se exportan los primeros TOP_EXPORTAR modelos de modelos_finales a un archivo .xlsx, una hoja por modelo. "
+        "Cada hoja replica la estructura de trazabilidad completa: endógena (histórico + forecast de los 3 escenarios); "
+        "exógenas del modelo (nivel histórico común + 3 escenarios); FWL a 12 meses (factor nivel / último histórico); "
+        "Factor FWL por Año (resumen de diciembre de cada año); residuos individuales y resumen de distribución; "
+        "coeficientes del modelo (con p-values); y pruebas estadísticas (Ljung-Box, Jarque-Bera, ARCH). Además, se "
+        "embebe metadata de trazabilidad en las propiedades del workbook (país, cartera, parámetros del motor, etc.).",
+        estilo_cuerpo
+    ))
+
+    story.append(Paragraph("1.10 Bloque 9 — Reporte CSV: Factores de Impacto", estilo_subseccion))
+    story.append(Paragraph(
+        "Este bloque genera un reporte .csv de factores de impacto (forecast / última PD observada) para un único "
+        "modelo elegido por su id, en los escenarios BAS, ADV, OPT y ORI (constante = 1). El factor se extiende de forma "
+        "plana hasta una fecha de corte configurable (por defecto 2100-12-01). Previamente, una celda auxiliar (B9.1) "
+        "evalúa los modelos exportados y muestra un top de candidatos cuyos factores FWL estén dentro o más cerca "
+        "del rango objetivo [FWL_RANGO_MIN, FWL_RANGO_MAX], facilitando la selección del modelo a reportar.",
+        estilo_cuerpo
+    ))
     story.append(PageBreak())
 
-    # ---- SECCIÓN 2: CONFIGURACIÓN ----
+    # =====================================================================
+    # SECCIÓN 2 — CONFIGURACIÓN DEL MOTOR
+    # =====================================================================
     story.append(Paragraph("2. Configuración del Motor", estilo_seccion))
+
     cfg_data = [
         ["Parámetro", "Valor"],
         ["País", meta.get("pais", "N/A")],
@@ -1535,68 +1835,93 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
     story.append(Spacer(1, 0.2 * inch))
 
     story.append(Paragraph("2.1 Factor FWL (Forward-Looking)", estilo_subseccion))
+    fwl_min = meta.get("fwl_min", "N/A")
+    fwl_max = meta.get("fwl_max", "N/A")
     story.append(Paragraph(
         f"El Factor FWL es el multiplicador escalar que se aplica sobre la proyección base "
         f"para obtener las trayectorias adverso y optimista. El rango FWL define los límites "
         f"mínimo y máximo dentro de los cuales puede oscilar este factor, garantizando que las "
         f"proyecciones extremas no se desvíen de manera irrazonable respecto a la trayectoria base. "
-        f"RANGO FWL CONFIGURADO: {meta.get('fwl_min', 'N/A')} — {meta.get('fwl_max', 'N/A')}. "
+        f"RANGO FWL CONFIGURADO: {fwl_min} — {fwl_max}. "
         f"Un rango más amplio implica mayor incertidumbre en los escenarios, mientras que un rango "
         f"más estrecho refleja mayor confianza en la estabilidad de la cartera.",
         estilo_cuerpo
     ))
-    story.append(Spacer(1, 0.1 * inch))
 
     story.append(Paragraph("2.2 Tipo de endógena: Logit vs Total", estilo_subseccion))
     tipo_endog = meta.get("tipo_endogena", "N/A")
     if str(tipo_endog).lower() == "logit":
-        texto_tipo = "Logit: La variable endógena se transforma mediante la función logit antes de la estimación. ..."
+        texto_tipo = (
+            "Logit: La variable endógena se transforma mediante la función logit antes de la estimación. "
+            "Esto es útil cuando la variable está acotada entre 0 y 1 (o 0% y 100%), ya que evita que el modelo "
+            "proyecte valores fuera del rango lógico. Los resultados deben retransformarse mediante la inversa "
+            "del logit (exp(x)/(1+exp(x))) para su interpretación en la escala original."
+        )
     else:
-        texto_tipo = "Total: La variable endógena se modela en su escala original. ..."
+        texto_tipo = (
+            "Total: La variable endógena se modela en su escala original (por ejemplo, "
+            "porcentaje de morosidad o tasa de variación). Los coeficientes se interpretan "
+            "directamente en unidades de la variable dependiente."
+        )
     story.append(Paragraph(f"TIPO ENDÓGENA CONFIGURADO: {tipo_endog}. {texto_tipo}", estilo_cuerpo))
-    story.append(Spacer(1, 0.1 * inch))
 
     story.append(Paragraph("2.3 Modo de endógena: Actual vs Media Móvil", estilo_subseccion))
     modo_endog = meta.get("modo_endogena", "N/A")
     ventana_mm = meta.get("ventana_mm", "N/A")
     if str(modo_endog).lower() in ["media_movil", "media móvil", "media movil"]:
-        texto_modo = "Media Móvil: La endógena se calcula como el promedio móvil de los últimos N meses. ..."
+        texto_modo = (
+            "Media Móvil: La endógena se calcula como el promedio móvil de los últimos N meses. "
+            "Este suavizado reduce el ruido de corto plazo y ayuda a identificar tendencias subyacentes, "
+            "siendo preferible cuando la serie presenta picos atípicos o alta frecuencia de variaciones puntuales."
+        )
     else:
-        texto_modo = "Actual: El modelo utiliza el valor observado de la serie en cada período. ..."
+        texto_modo = (
+            "Actual: El modelo utiliza el valor observado de la serie en cada período como variable dependiente. "
+            "Es el enfoque más directo y se recomienda cuando la serie presenta baja volatilidad de corto plazo."
+        )
     story.append(Paragraph(f"MODO CONFIGURADO: {modo_endog}. VENTANA MEDIA MÓVIL: {ventana_mm} meses. {texto_modo}", estilo_cuerpo))
-    story.append(Spacer(1, 0.1 * inch))
 
     story.append(Paragraph("2.4 Umbrales de sensibilidad", estilo_subseccion))
+    umbral_sens = meta.get("umbral_sensibilidad", "N/A")
     story.append(Paragraph(
-        f"UMBRAL DE SENSIBILIDAD CONFIGURADO: {meta.get('umbral_sensibilidad', 'N/A')}. "
         f"Los umbrales de sensibilidad definen los límites de variación aceptables para los coeficientes "
-        f"de las variables exógenas ante shocks en las proyecciones.",
+        f"de las variables exógenas ante shocks en las proyecciones. Si el cambio en una macro excede el umbral "
+        f"definido, el modelo alerta sobre posible inestabilidad estructural. "
+        f"UMBRAL DE SENSIBILIDAD CONFIGURADO: {umbral_sens}. "
+        f"Nota: Este parámetro debe verificarse contra la configuración vigente del motor de modelos.",
         estilo_cuerpo
     ))
-    story.append(Spacer(1, 0.1 * inch))
 
     story.append(Paragraph("2.5 Parámetros del motor", estilo_subseccion))
     story.append(Paragraph(
-        f"VIF máximo: {meta.get('vif_max', 'N/A')}. "
-        f"Máx. exógenas por modelo: {meta.get('max_exog', 'N/A')}. "
-        f"Top exportar: {meta.get('top_exportar', 'N/A')}. "
-        f"Órdenes AR: {meta.get('valores_p', 'N/A')}. "
-        f"Órdenes MA: {meta.get('valores_q', 'N/A')}. "
-        f"Máx. lags: {meta.get('max_lags', 'N/A')}. "
-        f"Trend: {meta.get('trend_modelo', 'N/A')}.",
+        f"Los siguientes parámetros fueron utilizados en la corrida que generó este modelo: "
+        f"VIF máximo permitido: {meta.get('vif_max', 'N/A')}. "
+        f"Máximo de exógenas por modelo: {meta.get('max_exog', 'N/A')}. "
+        f"Top de modelos a exportar: {meta.get('top_exportar', 'N/A')}. "
+        f"Órdenes AR candidatos: {meta.get('valores_p', 'N/A')}. "
+        f"Órdenes MA candidatos: {meta.get('valores_q', 'N/A')}. "
+        f"Máximo de lags evaluados: {meta.get('max_lags', 'N/A')}. "
+        f"Significancia mínima de exógenas: p ≤ 0.05. "
+        f"Trend del modelo: {meta.get('trend_modelo', 'N/A')}.",
         estilo_cuerpo
     ))
     story.append(PageBreak())
 
-    # ---- SECCIÓN 3: VARIABLES ----
+    # =====================================================================
+    # SECCIÓN 3 — VARIABLES UTILIZADAS
+    # =====================================================================
     story.append(Paragraph("3. Variables Utilizadas", estilo_seccion))
+
     exo_data = [["Variable exógena", "Coeficiente", "p-value", "Significancia"]]
     exo_count = 0
     for row in coeficientes:
         if row.get("tipo") == "Exogena":
             exo_count += 1
             pval = row.get("p_value")
-            sig = "Sí" if pval is not None and float(pval) < 0.05 else "No"
+            try:
+                sig = "Sí" if pval is not None and float(pval) < 0.05 else "No"
+            except:
+                sig = "No"
             coef_val = row.get("coeficiente")
             exo_data.append([
                 str(row.get("variable", "N/A")),
@@ -1604,6 +1929,7 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
                 fmt_num(pval),
                 sig
             ])
+
     if exo_count > 0:
         for row in exo_data[1:]:
             row[0] = truncar_texto(row[0], max_len=42)
@@ -1612,12 +1938,20 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
         story.append(tabla_exo)
     else:
         story.append(Paragraph("No se encontraron variables exógenas significativas en este modelo.", estilo_cuerpo))
+
     story.append(Spacer(1, 0.15 * inch))
     story.append(Paragraph("Especificación ARMA", estilo_subseccion))
-    story.append(Paragraph(f"Términos AR: {ar_count}. Términos MA: {ma_count}. Observaciones: {observaciones}.", estilo_cuerpo))
+    story.append(Paragraph(
+        f"Términos autorregresivos (AR): {ar_count}. "
+        f"Términos de media móvil (MA): {ma_count}. "
+        f"Observaciones utilizadas en la estimación: {observaciones}.",
+        estilo_cuerpo
+    ))
     story.append(PageBreak())
 
-    # ---- SECCIÓN 4: GRÁFICA DE EXÓGENAS ----
+    # =====================================================================
+    # SECCIÓN 4 — GRÁFICA DE VARIABLES EXÓGENAS
+    # =====================================================================
     story.append(Paragraph("4. Gráfica de Variables Exógenas", estilo_seccion))
     story.append(Paragraph(
         "La siguiente figura muestra la evolución histórica y proyectada de cada variable exógena "
@@ -1627,25 +1961,31 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
         estilo_cuerpo
     ))
     story.append(Spacer(1, 0.15 * inch))
+
     if ruta_imagen_exog and os.path.exists(ruta_imagen_exog):
         try:
             from PIL import Image as PILImage
             with PILImage.open(ruta_imagen_exog) as im:
-                img_w, img_h = im.size
-            aspecto = img_h / img_w
-            ancho = 6.5 * inch
+                img_w_px, img_h_px = im.size
+            aspecto = img_h_px / img_w_px
+            ancho_max = 6.5 * inch
+            alto_max = 8.8 * inch  # margen de página disponible
+            ancho = ancho_max
             alto = ancho * aspecto
-            if alto > 8.8 * inch:
-                alto = 8.8 * inch
+            if alto > alto_max:
+                alto = alto_max
                 ancho = alto / aspecto
             story.append(Image(ruta_imagen_exog, width=ancho, height=alto))
         except Exception:
             story.append(Image(ruta_imagen_exog, width=6.5 * inch, height=4.5 * inch))
     else:
         story.append(Paragraph("[Gráfica no disponible]", estilo_nota))
+
     story.append(PageBreak())
 
-    # ---- SECCIÓN 5: DIAGNÓSTICOS ----
+    # =====================================================================
+    # SECCIÓN 5 — DIAGNÓSTICOS E INTERPRETACIÓN
+    # =====================================================================
     story.append(Paragraph("5. Diagnósticos e Interpretación", estilo_seccion))
     story.append(Paragraph(
         "A continuación se presentan los resultados de las pruebas estadísticas aplicadas a los residuos "
@@ -1655,31 +1995,42 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
     ))
     story.append(Spacer(1, 0.1 * inch))
 
-    for prueba, key, nombre in [
-        (lb, "ljung_box", "Ljung-Box — Autocorrelación de residuos"),
-        (jb, "jarque_bera", "Jarque-Bera — Normalidad de residuos"),
-        (ht, "heterocedasticidad", "Heterocedasticidad — ARCH/LM")
-    ]:
-        score = prueba.get("score", "N/A")
-        p_val = prueba.get("p_value", 0)
-        stat = prueba.get("estadistico", 0)
-        interp = prueba.get("interpretacion", "")
-        if not interp:
-            if "ljung" in key:
-                interp = texto_ljungbox(score, p_val if p_val is not None else 0)
-            elif "jarque" in key:
-                interp = texto_jarquebera(score, p_val if p_val is not None else 0)
-            else:
-                interp = texto_hetero(score, p_val if p_val is not None else 0)
-        story.append(Paragraph(f"5.{['1','2','3'][['ljung','jarque','hetero'].index(key.split('_')[0])]} {nombre} (Score: {score})", estilo_subseccion))
-        story.append(Paragraph(f"Estadístico: {fmt_num(stat)}  |  p-valor: {fmt_num(p_val)}", estilo_nota))
-        story.append(Paragraph(interp, estilo_por_score(score)))
-        story.append(Spacer(1, 0.1 * inch))
+    # Ljung-Box
+    lb_score = lb.get("score", "N/A")
+    lb_p = lb.get("p_value", 0)
+    lb_stat = lb.get("estadistico", 0)
+    lb_interp = lb.get("interpretacion", texto_ljungbox(lb_score, lb_p if lb_p is not None else 0))
+    story.append(Paragraph(f"5.1 Ljung-Box — Autocorrelación de residuos (Score: {lb_score})", estilo_subseccion))
+    story.append(Paragraph(f"Estadístico: {fmt_num(lb_stat)}  |  p-valor: {fmt_num(lb_p)}", estilo_nota))
+    story.append(Paragraph(lb_interp, estilo_por_score(lb_score)))
+    story.append(Spacer(1, 0.1 * inch))
+
+    # Jarque-Bera
+    jb_score = jb.get("score", "N/A")
+    jb_p = jb.get("p_value", 0)
+    jb_stat = jb.get("estadistico", 0)
+    jb_interp = jb.get("interpretacion", texto_jarquebera(jb_score, jb_p if jb_p is not None else 0))
+    story.append(Paragraph(f"5.2 Jarque-Bera — Normalidad de residuos (Score: {jb_score})", estilo_subseccion))
+    story.append(Paragraph(f"Estadístico: {fmt_num(jb_stat)}  |  p-valor: {fmt_num(jb_p)}", estilo_nota))
+    story.append(Paragraph(jb_interp, estilo_por_score(jb_score)))
+    story.append(Spacer(1, 0.1 * inch))
+
+    # Heterocedasticidad
+    ht_score = ht.get("score", "N/A")
+    ht_p = ht.get("p_value", 0)
+    ht_stat = ht.get("estadistico", 0)
+    ht_interp = ht.get("interpretacion", texto_hetero(ht_score, ht_p if ht_p is not None else 0))
+    story.append(Paragraph(f"5.3 Heterocedasticidad — ARCH/LM (Score: {ht_score})", estilo_subseccion))
+    story.append(Paragraph(f"Estadístico: {fmt_num(ht_stat)}  |  p-valor: {fmt_num(ht_p)}", estilo_nota))
+    story.append(Paragraph(ht_interp, estilo_por_score(ht_score)))
     story.append(PageBreak())
 
-    # ---- SECCIÓN 6: SCORE GLOBAL (solo si BUENO) ----
+    # =====================================================================
+    # SECCIÓN 6 — SCORE GLOBAL Y CONCLUSIÓN (solo si el modelo califica como BUENO)
+    # =====================================================================
     if score_global is not None and score_global >= 7:
         story.append(Paragraph("6. Score Global y Conclusión", estilo_seccion))
+
         story.append(Paragraph(
             "El score global es una métrica ponderada que resume la calidad diagnóstica del modelo en una "
             "escala de 0 a 10. Se construye a partir de los scores individuales (A, B, C, D) de las tres pruebas "
@@ -1689,28 +2040,35 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
         story.append(Paragraph(
             "<b>Paso 1 — Score individual por prueba:</b> Cada prueba recibe una letra según su p-valor. "
             "Para Ljung-Box y Heterocedasticidad: A (p > 0.10), B (0.05 < p ≤ 0.10), C (0.01 < p ≤ 0.05), D (p ≤ 0.01). "
-            "Para Jarque-Bera se aplican los mismos umbrales.",
+            "Para Jarque-Bera se aplican los mismos umbrales. A indica cumplimiento óptimo, D indica incumplimiento significativo.",
             estilo_cuerpo
         ))
         story.append(Paragraph(
-            "<b>Paso 2 — Conversión numérica:</b> A = 10.0, B = 7.5, C = 5.0, D = 2.5.",
+            "<b>Paso 2 — Conversión numérica:</b> Cada letra se convierte a un valor numérico: A = 10.0, B = 7.5, C = 5.0, D = 2.5. "
+            "Esta escala refleja que un score C ya representa una señal de alerta que requiere monitoreo, mientras que D indica "
+            "un problema estadístico que compromete la validez del modelo.",
             estilo_cuerpo
         ))
         story.append(Paragraph(
-            "<b>Paso 3 — Ponderación:</b> Ljung-Box: 40%, Jarque-Bera: 30%, Heterocedasticidad: 30%.",
+            "<b>Paso 3 — Ponderación:</b> Los tres scores numéricos se combinan con pesos que reflejan la importancia relativa "
+            "de cada diagnóstico para la robustez del modelo SARIMAX: Ljung-Box (autocorrelación de residuos) pesa 40%; "
+            "Jarque-Bera (normalidad de residuos) pesa 30%; y Heterocedasticidad (varianza constante) pesa 30%. "
+            "La fórmula es: <i>Score Global = 0.40 × Score_Ljung + 0.30 × Score_Jarque + 0.30 × Score_Hetero</i>.",
             estilo_cuerpo
         ))
         story.append(Paragraph(
-            "<b>Paso 4 — Clasificación:</b> ≥ 7.0 = BUENO; 5.0 – 6.9 = REGULAR; < 5.0 = DEFICIENTE.",
+            "<b>Paso 4 — Clasificación:</b> El resultado final se interpreta así: ≥ 7.0 = BUENO (modelo robusto para uso oficial); "
+            "5.0 – 6.9 = REGULAR (utilizable con seguimiento); < 5.0 = DEFICIENTE (requiere reespecificación antes de uso oficial). "
+            "Esta clasificación permite al equipo de modelos de riesgo tomar decisiones informadas sobre la selección final.",
             estilo_cuerpo
         ))
         story.append(Spacer(1, 0.1 * inch))
 
         resumen_data = [
             ["Prueba", "Score", "p-valor", "Estadístico"],
-            ["Ljung-Box", lb.get("score", "N/A"), fmt_num(lb.get("p_value")), fmt_num(lb.get("estadistico"))],
-            ["Jarque-Bera", jb.get("score", "N/A"), fmt_num(jb.get("p_value")), fmt_num(jb.get("estadistico"))],
-            ["Heterocedasticidad", ht.get("score", "N/A"), fmt_num(ht.get("p_value")), fmt_num(ht.get("estadistico"))],
+            ["Ljung-Box", lb_score, fmt_num(lb_p), fmt_num(lb_stat)],
+            ["Jarque-Bera", jb_score, fmt_num(jb_p), fmt_num(jb_stat)],
+            ["Heterocedasticidad", ht_score, fmt_num(ht_p), fmt_num(ht_stat)],
             ["Score Global Ponderado", "", "", f"{score_global:.2f} / 10"],
         ]
         tabla_resumen = Table(resumen_data, colWidths=[2.2 * inch, 1.0 * inch, 1.2 * inch, 1.3 * inch])
@@ -1719,14 +2077,27 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
         story.append(Spacer(1, 0.2 * inch))
 
         clas_norm = str(clasificacion).upper()
-        color_clas = VERDE_CORP if clas_norm == "BUENO" else (AMBAR_CORP if clas_norm == "REGULAR" else ROJO_CORP)
-        estilo_clas = ParagraphStyle("ClasificacionDoc", parent=estilo_seccion, textColor=color_clas,
-                                     alignment=TA_CENTER, fontSize=18, spaceAfter=12)
+        if clas_norm == "BUENO":
+            color_clas = VERDE_CORP
+        elif clas_norm == "REGULAR":
+            color_clas = AMBAR_CORP
+        else:
+            color_clas = ROJO_CORP
+
+        estilo_clas = ParagraphStyle(
+            "ClasificacionDoc",
+            parent=estilo_seccion,
+            textColor=color_clas,
+            alignment=TA_CENTER,
+            fontSize=18,
+            spaceAfter=12
+        )
         story.append(Paragraph(f"Clasificación: {clasificacion}", estilo_clas))
         story.append(Paragraph(f"Score global: {score_global:.2f} / 10", estilo_subseccion))
         story.append(Spacer(1, 0.1 * inch))
         story.append(Paragraph("Conclusión", estilo_subseccion))
         story.append(Paragraph(conclusion_global, estilo_cuerpo))
+
         story.append(Spacer(1, 0.3 * inch))
 
     story.append(Paragraph(
@@ -1739,7 +2110,6 @@ def generar_pdf_metodologico(doc_data: dict, ruta_imagen_exog: str, ruta_imagen_
     pdf_bytes = buffer.getvalue()
     buffer.close()
     return pdf_bytes
-
 def generar_excel_metodologico(doc_data, ruta_imagen):
     wb = openpyxl.Workbook()
     ws_meta = wb.active
@@ -1805,6 +2175,7 @@ def generar_excel_metodologico(doc_data, ruta_imagen):
     return buff.getvalue()
 
 def generar_y_guardar_documentos(nombre_modelo):
+    """Genera PDF + Excel, guarda en session_state, retorna True/False."""
     try:
         doc_data = recolectar_datos_documento(
             nombre_modelo,
@@ -1882,9 +2253,6 @@ def generar_y_guardar_documentos(nombre_modelo):
     st.session_state.documento_metodologico_data = doc_data
     return True
 
-# =============================================================================
-# PLOTLY FIGURES
-# =============================================================================
 def aplicar_tema_plotly(fig):
     fig.update_layout(
         font=dict(family="Inter, Arial, sans-serif", size=12, color=TEXT),
@@ -2054,7 +2422,11 @@ def render_diagnosticos_corporativo(pruebas_df, mostrar_detalle_tecnico=True):
         elif val == "C": return f"color: #B8860B; font-weight: 700;"
         elif val == "D": return f"color: {RED}; font-weight: 700;"
         return ""
-    styler = df_tec.style.map(color_score, subset=['Score'])
+    styler = df_tec.style
+    if hasattr(styler, "map"):
+        styler = styler.map(color_score, subset=['Score'])
+    else:
+        styler = styler.applymap(color_score, subset=['Score'])
     st.dataframe(styler, use_container_width=True, hide_index=True)
 
 def fmt_pvalor(v):
@@ -2069,6 +2441,10 @@ def render_metricas_diagnostico(pruebas_df):
         return
     scores = obtener_scores_modelo(pruebas_df)
     score_global, _ = calcular_score_global(pruebas_df)
+    # NOTA: estilo_score_global() devuelve 3 valores (etiqueta, color, fondo),
+    # a diferencia de clasificar_score_global() que devuelve solo 2
+    # (etiqueta, conclusion). Usar la funcion correcta evita el
+    # "ValueError: not enough values to unpack".
     etiqueta_g, color_g, _ = estilo_score_global(score_global)
     c0, c1, c2, c3 = st.columns(4)
     with c0:
@@ -2095,9 +2471,8 @@ def alternar_favorito(nombre):
 
 def boton_favorito(nombre, key_suffix=""):
     activo = es_favorito(nombre)
-    label = "⭐ Favorito" if activo else "⭐ Marcar favorito"
-    sanitized = _sanitizar_key(nombre)
-    if st.button(label, key=f"fav_{key_suffix}_{sanitized}", use_container_width=True):
+    label = "Favorito" if activo else "Marcar favorito"
+    if st.button(label, key=f"fav_{key_suffix}_{nombre}", use_container_width=True):
         alternar_favorito(nombre)
         st.rerun()
 
@@ -2191,6 +2566,7 @@ def render_columna_comparacion(nombre, index=0):
     score_global, _ = calcular_score_global(pruebas)
     scores = obtener_scores_modelo(pruebas)
 
+    # Sanitizar el nombre para el key
     nombre_safe = _sanitizar_key(nombre)
 
     st.markdown(f"<p style='font-weight:700;color:{NAVY};font-size:13px;margin:0 0 6px;'>{nombre}</p>", unsafe_allow_html=True)
@@ -2226,129 +2602,185 @@ def render_columna_comparacion(nombre, index=0):
     </div>
     """, unsafe_allow_html=True)
 
-# =============================================================================
-# NUEVA FUNCIÓN: Distribución de scores globales (para el resumen ejecutivo)
-# =============================================================================
-def fig_distribucion_global(modelos_data):
-    """Genera un gráfico de torta con la distribución de scores globales (A-D)."""
-    conteo = {'A': 0, 'B': 0, 'C': 0, 'D': 0}
-    for nombre, datos in modelos_data.items():
-        pruebas = datos.get('pruebas')
-        score_global, _ = calcular_score_global(pruebas)
-        letra = clasificar_letra_global(score_global)
-        if letra in conteo:
-            conteo[letra] += 1
-    total = sum(conteo.values())
-    if total == 0:
-        return None
-    labels = ['A - Bueno (9-10)', 'B - Aceptable (7-9)', 'C - Regular (4-7)', 'D - Deficiente (0-4)']
-    values = [conteo['A'], conteo['B'], conteo['C'], conteo['D']]
-    colors = [SCORE_COLORS['A'][1], SCORE_COLORS['B'][1], SCORE_COLORS['C'][1], SCORE_COLORS['D'][1]]
-    fig = go.Figure(data=[go.Pie(labels=labels, values=values, marker=dict(colors=colors),
-                                 textinfo='label+percent', hoverinfo='label+value+percent',
-                                 pull=[0.05, 0.05, 0.05, 0.05])])
+def fig_donut_score_global(df_res):
+    """Donut ejecutivo de la distribucion global: Bueno / Regular / Deficiente."""
+    if df_res is None or df_res.empty:
+        return go.Figure()
+    con_score = df_res.dropna(subset=["Score"]).copy()
+    counts = [
+        int((con_score["Score"] >= 7).sum()) if not con_score.empty else 0,
+        int(((con_score["Score"] >= 5) & (con_score["Score"] < 7)).sum()) if not con_score.empty else 0,
+        int((con_score["Score"] < 5).sum()) if not con_score.empty else 0,
+    ]
+    labels = ["Buenos (A-B)", "Regulares (C)", "Deficientes (D)"]
+    colors = [GREEN, "#E0A100", RED]
+    total = sum(counts)
+    fig = go.Figure(go.Pie(
+        labels=labels, values=counts, hole=0.58, sort=False, direction="clockwise",
+        textinfo="percent", textposition="inside",
+        marker=dict(colors=colors, line=dict(color=WHITE, width=2)),
+        hovertemplate="%{label}<br>%{value} modelos (%{percent})<extra></extra>",
+        showlegend=True
+    ))
     fig.update_layout(
-        title="Distribución de Score Global",
-        legend=dict(orientation='h', yanchor='bottom', y=-0.2, xanchor='center', x=0.5),
-        height=400
+        height=300, font=dict(family="Inter, Arial, sans-serif", size=11, color=TEXT),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=10,r=10,t=8,b=8),
+        legend=dict(orientation="v", x=1.02, y=0.5, xanchor="left", yanchor="middle", font=dict(size=10)),
+        annotations=[dict(
+            text=f"<b>{total}</b><br><span style='font-size:10px'>modelos</span>",
+            x=0.5, y=0.5, xref="paper", yref="paper", showarrow=False, align="center",
+            font=dict(size=20, color=NAVY)
+        )]
     )
+    return fig
+
+
+def fig_distribucion_scores(modelos_data):
+    nombre_map = {'ljung_box': 'Ljung-Box', 'jarque_bera': 'Jarque-Bera', 'heterocedasticidad': 'Heterocedasticidad'}
+    conteo = {label: {'A': 0, 'B': 0, 'C': 0, 'D': 0} for label in nombre_map.values()}
+    for datos in modelos_data.values():
+        scores = obtener_scores_modelo(datos.get('pruebas'))
+        for clave, label in nombre_map.items():
+            letra, _ = scores.get(clave, ('N/A', None))
+            if letra in conteo[label]:
+                conteo[label][letra] += 1
+    fig = go.Figure()
+    for letra in ['A', 'B', 'C', 'D']:
+        color = SCORE_COLORS[letra][1]
+        fig.add_trace(go.Bar(
+            name=letra, x=list(nombre_map.values()),
+            y=[conteo[label][letra] for label in nombre_map.values()],
+            marker_color=color
+        ))
+    fig.update_layout(barmode='stack', title="Distribucion de Scores por Prueba", yaxis_title="Cantidad de modelos", legend_title_text="Score")
     return aplicar_tema_plotly(fig)
 
-# =============================================================================
-# RENDER RESUMEN EJECUTIVO (MODIFICADO)
-# =============================================================================
 def render_resumen_ejecutivo():
+    """Resumen ejecutivo estilo dashboard corporativo de la referencia visual."""
     modelos_data = st.session_state.modelos_data
-    scores_list = []
-    for nombre, datos in modelos_data.items():
-        pruebas = datos.get('pruebas')
-        score_global, _ = calcular_score_global(pruebas)
-        letra = clasificar_letra_global(score_global)
-        ar_count, ma_count = contar_ar_ma(datos.get('coeficientes'))
-        scores_list.append({
-            'Modelo': nombre,
-            'Score': score_global,
-            'Letra': letra,
-            'AR': ar_count,
-            'MA': ma_count
-        })
-    df_scores = pd.DataFrame(scores_list)
-    total = len(df_scores)
-    con_score = df_scores.dropna(subset=['Score'])
-    conteo_letras = df_scores['Letra'].value_counts().to_dict()
-    a_count = conteo_letras.get('A', 0)
-    b_count = conteo_letras.get('B', 0)
-    c_count = conteo_letras.get('C', 0)
-    d_count = conteo_letras.get('D', 0)
+    meta = st.session_state.get("meta_contexto")
+    meta_fallback = st.session_state.get("meta_contexto_manual", {})
+    meta_display = meta if meta else meta_fallback
 
-    st.markdown(f"""
-    <div style="margin-bottom:8px;">
-        <p style="font-size:20px;font-weight:700;color:{NAVY};margin:0;">Resumen de la corrida</p>
-        <p style="font-size:12px;color:{MUTED};margin:4px 0 0;">Vista general de los {total} modelos cargados en el archivo.</p>
+    filas = []
+    for nombre, datos in modelos_data.items():
+        pruebas = datos.get("pruebas")
+        score_global, _ = calcular_score_global(pruebas)
+        coefs = datos.get("coeficientes")
+        ar_count, ma_count = contar_ar_ma(coefs) if coefs is not None else (0, 0)
+        filas.append({"Modelo": nombre, "Score": score_global, "AR": ar_count, "MA": ma_count})
+
+    df_res = pd.DataFrame(filas, columns=["Modelo", "Score", "AR", "MA"])
+    total = len(df_res)
+    con_score = df_res.dropna(subset=["Score"]).copy()
+
+    buenos = int((con_score["Score"] >= 7).sum()) if not con_score.empty else 0
+    regulares = int(((con_score["Score"] >= 5) & (con_score["Score"] < 7)).sum()) if not con_score.empty else 0
+    deficientes = int((con_score["Score"] < 5).sum()) if not con_score.empty else 0
+    base = max(len(con_score), 1)
+    p_buenos = buenos / base * 100 if total else 0
+    p_regulares = regulares / base * 100 if total else 0
+    p_deficientes = deficientes / base * 100 if total else 0
+
+    meta_kpis = extraer_kpis_meta(meta_display or {}, {})
+
+    st.markdown("""
+    <div style="margin-bottom:14px;">
+        <p class="exec-title">RESUMEN EJECUTIVO</p>
+        <p class="exec-subtitle">Vista consolidada de la corrida y distribución de calidad de los modelos.</p>
     </div>
-    <div style="height:1px;background:{BORDER};margin:12px 0 20px;"></div>
     """, unsafe_allow_html=True)
 
-    c1, c2, c3, c4, c5 = st.columns(5)
-    with c1:
-        st.markdown(card_kpi("Modelos totales", str(total)), unsafe_allow_html=True)
-    with c2:
-        st.markdown(card_kpi("A - Bueno (9-10)", str(a_count), accent=SCORE_COLORS['A'][1]), unsafe_allow_html=True)
-    with c3:
-        st.markdown(card_kpi("B - Aceptable (7-9)", str(b_count), accent=SCORE_COLORS['B'][1]), unsafe_allow_html=True)
-    with c4:
-        st.markdown(card_kpi("C - Regular (4-7)", str(c_count), accent=SCORE_COLORS['C'][1]), unsafe_allow_html=True)
-    with c5:
-        st.markdown(card_kpi("D - Deficiente (0-4)", str(d_count), accent=SCORE_COLORS['D'][1]), unsafe_allow_html=True)
+    k1, k2, k3, k4 = st.columns(4)
+    cards = [
+        ("Modelos totales", total, "100%", NAVY, BLUE),
+        ("Buenos (A-B)", buenos, f"{p_buenos:.1f}%", GREEN, GREEN),
+        ("Regulares (C)", regulares, f"{p_regulares:.1f}%", "#E0A100", "#E0A100"),
+        ("Deficientes (D)", deficientes, f"{p_deficientes:.1f}%", RED, RED),
+    ]
+    for col, (label, value, pct, value_color, pct_color) in zip((k1,k2,k3,k4), cards):
+        with col:
+            st.markdown(f"""
+            <div class="exec-card">
+                <p class="exec-card-label">{label}</p>
+                <p class="exec-card-value" style="color:{value_color};">{value}</p>
+                <p class="exec-card-pct" style="color:{pct_color};">{pct}</p>
+            </div>
+            """, unsafe_allow_html=True)
 
-    st.markdown(divider(), unsafe_allow_html=True)
+    st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
 
-    fig_pie = fig_distribucion_global(modelos_data)
-    if fig_pie:
-        st.plotly_chart(fig_pie, use_container_width=True)
-    else:
-        st.info("No hay datos para generar la distribución.")
+    left_panel, right_panel = st.columns([1.05, 1.25])
+    with left_panel:
+        st.markdown('<div class="exec-panel">', unsafe_allow_html=True)
+        st.markdown('<p class="exec-panel-title">Distribución de Score Global</p>', unsafe_allow_html=True)
+        st.plotly_chart(fig_donut_score_global(df_res), use_container_width=True, config={"displayModeBar": False})
+        st.markdown("""
+            <p class="exec-note">
+                <b>Buenos:</b> score ≥ 7 &nbsp;|&nbsp;
+                <b>Regulares:</b> 5 ≤ score &lt; 7 &nbsp;|&nbsp;
+                <b>Deficientes:</b> score &lt; 5
+            </p></div>
+        """, unsafe_allow_html=True)
 
-    st.markdown(divider(), unsafe_allow_html=True)
+    with right_panel:
+        st.markdown('<div class="exec-panel">', unsafe_allow_html=True)
+        st.markdown('<p class="exec-panel-title">Top 5 modelos por Score Global</p>', unsafe_allow_html=True)
+        if con_score.empty:
+            st.markdown(f"<p style='font-size:11px;color:{MUTED};margin:10px 0;'>No hay modelos con score global disponible.</p>", unsafe_allow_html=True)
+        else:
+            top5 = con_score.sort_values(["Score","Modelo"], ascending=[False,True]).head(5)
+            rows=[]
+            for rank,(_,row) in enumerate(top5.iterrows(), start=1):
+                score=float(row["Score"])
+                rows.append(
+                    f"<tr><td class='exec-rank'>{rank}</td>"
+                    f"<td style='font-weight:600;color:{NAVY};'>{row['Modelo']}</td>"
+                    f"<td>AR {int(row['AR'])} / MA {int(row['MA'])}</td>"
+                    f"<td style='font-weight:700;color:{NAVY};'>{score:.1f}</td>"
+                    f"<td>{badge_clasificacion(score)}</td></tr>"
+                )
+            st.markdown(f"""
+            <table class="exec-html-table">
+                <thead><tr>
+                    <th>#</th><th>Modelo</th><th>Especificación</th><th>Score Global</th><th>Clasificación</th>
+                </tr></thead>
+                <tbody>{''.join(rows)}</tbody>
+            </table>
+            """, unsafe_allow_html=True)
+        st.markdown(
+            "<p class='exec-note'>La especificación resume la estructura AR/MA disponible en el archivo cargado.</p></div>",
+            unsafe_allow_html=True
+        )
 
-    tcol1, tcol2 = st.columns(2)
-    with tcol1:
-        st.markdown(section_title("Top 5 - mejor score global"), unsafe_allow_html=True)
-        top5 = con_score.sort_values('Score', ascending=False).head(5)
-        top5['Especificación'] = top5.apply(lambda row: f"AR: {row['AR']}, MA: {row['MA']}", axis=1)
-        top5_display = top5[['Modelo', 'Score', 'Letra', 'Especificación']]
-        top5_display.columns = ['Modelo', 'Score Global', 'Clasificación', 'Especificación']
-        st.dataframe(top5_display, use_container_width=True, hide_index=True)
-    with tcol2:
-        st.markdown(section_title("Bottom 5 - peor score global"), unsafe_allow_html=True)
-        bottom5 = con_score.sort_values('Score', ascending=True).head(5)
-        bottom5['Especificación'] = bottom5.apply(lambda row: f"AR: {row['AR']}, MA: {row['MA']}", axis=1)
-        bottom5_display = bottom5[['Modelo', 'Score', 'Letra', 'Especificación']]
-        bottom5_display.columns = ['Modelo', 'Score Global', 'Clasificación', 'Especificación']
-        st.dataframe(bottom5_display, use_container_width=True, hide_index=True)
+    st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
+    st.markdown('<div class="exec-panel">', unsafe_allow_html=True)
+    st.markdown('<p class="exec-panel-title">Contexto de la corrida</p>', unsafe_allow_html=True)
+    ctx1, ctx2, ctx3, ctx4 = st.columns(4)
+    with ctx1:
+        st.markdown(card_metric("País", meta_kpis.get("pais", "N/A"), BLUE), unsafe_allow_html=True)
+    with ctx2:
+        st.markdown(card_metric("Cartera", meta_kpis.get("cartera", "N/A"), BLUE), unsafe_allow_html=True)
+    with ctx3:
+        st.markdown(card_metric("Tipo endógena", str(meta_kpis.get("tipo_endogena", "N/A")).upper(), GREEN), unsafe_allow_html=True)
+    with ctx4:
+        st.markdown(card_metric("Rango FWL", f"{meta_kpis.get('fwl_min','?')} - {meta_kpis.get('fwl_max','?')}", GREEN), unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown(divider(), unsafe_allow_html=True)
-
-    st.markdown(section_title("Estructura promedio de los modelos"), unsafe_allow_html=True)
-    ac1, ac2 = st.columns(2)
-    with ac1:
-        st.markdown(card_metric("Promedio términos AR", f"{df_scores['AR'].mean():.2f}" if total else "0", BLUE), unsafe_allow_html=True)
-    with ac2:
-        st.markdown(card_metric("Promedio términos MA", f"{df_scores['MA'].mean():.2f}" if total else "0", BLUE), unsafe_allow_html=True)
-
-    st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
-
-    bexp1, bexp2 = st.columns(2)
-    with bexp1:
-        if st.button("Explorar modelos", key="btn_explorar_modelos", use_container_width=True):
-            st.session_state.vista_resumen = False
+    st.markdown("<div style='height:18px;'></div>", unsafe_allow_html=True)
+    b1, b2 = st.columns([1.3,1])
+    with b1:
+        if st.button("Explorar modelos", key="btn_explorar_modelos", use_container_width=True, type="primary"):
+            st.session_state.vista_resumen=False
             st.rerun()
-    with bexp2:
-        n_fav = len([m for m in st.session_state.get("favoritos", set()) if m in st.session_state.modelos_data])
+    with b2:
+        n_fav=len([m for m in st.session_state.get("favoritos",set()) if m in st.session_state.modelos_data])
         if st.button(f"Ver favoritos ({n_fav})", key="btn_ver_favoritos_resumen", use_container_width=True):
-            st.session_state.vista_resumen = False
-            st.session_state.vista_favoritos = True
+            st.session_state.vista_resumen=False
+            st.session_state.vista_favoritos=True
             st.rerun()
+
 
 def render_vista_favoritos():
     favoritos = st.session_state.get("favoritos", set())
@@ -2394,13 +2826,12 @@ def render_vista_favoritos():
                     <p style="font-size:11px;color:{MUTED};margin:10px 0 0;">{obs} observaciones - AR {ar_count} / MA {ma_count}</p>
                 </div>
                 """, unsafe_allow_html=True)
-                sanitized = _sanitizar_key(nombre)
-                if st.button("Ver modelo", key=f"abrir_fav_{sanitized}", use_container_width=True):
+                if st.button("Ver modelo", key=f"abrir_fav_{nombre}", use_container_width=True):
                     st.session_state.modelo_seleccionado = nombre
                     st.session_state.vista_favoritos = False
                     st.session_state.vista_resumen = False
                     st.rerun()
-                if st.button(" Quitar de favoritos", key=f"quitar_fav_{sanitized}", use_container_width=True):
+                if st.button(" Quitar de favoritos", key=f"quitar_fav_{nombre}", use_container_width=True):
                     alternar_favorito(nombre)
                     st.rerun()
 
@@ -2423,7 +2854,11 @@ def render_seccion_coeficientes(datos, key_prefix="diag"):
         def color_pval(v):
             try: return f"color: {GREEN}; font-weight: 700;" if float(v) < 0.05 else f"color: {RED};"
             except: return ""
-        styler = df_display.style.map(color_pval, subset=['P-valor'])
+        styler = df_display.style
+        if hasattr(styler, "map"):
+            styler = styler.map(color_pval, subset=['P-valor'])
+        else:
+            styler = styler.applymap(color_pval, subset=['P-valor'])
         st.dataframe(styler, use_container_width=True, hide_index=True, key=f"{key_prefix}_coef_tabla")
         ar_count, ma_count = contar_ar_ma(coefs)
         st.markdown(divider(), unsafe_allow_html=True)
@@ -2444,6 +2879,7 @@ def render_generador():
     st.markdown(f"<p style='font-size:20px;font-weight:700;color:{NAVY};margin:0 0 8px;'>Generador de Notebooks SARIMAX</p>", unsafe_allow_html=True)
     st.markdown(f"<p style='font-size:12px;color:{MUTED};margin:0 0 20px;'>Configura parametros y descarga los notebooks listos para ejecutar.</p>", unsafe_allow_html=True)
 
+    # Directorio de templates
     TEMPLATES_DIR = Path(__file__).parent
     TEMPLATE_GENERADOR = TEMPLATES_DIR / "Generacion_Variacion__2_.ipynb"
     TEMPLATE_MOTOR = TEMPLATES_DIR / "Motor_Sarimax_Vivi_CO__1_.ipynb"
@@ -2471,6 +2907,7 @@ def render_generador():
             help="Selecciona el portafolio de credito"
         )
 
+        # Campo para escribir manualmente - tiene prioridad sobre el selectbox
         cartera_manual = st.text_input(
             "O escribe el nombre de la cartera manualmente",
             value="",
@@ -2478,6 +2915,7 @@ def render_generador():
             help="Si escribes aqui, se usara este valor en lugar del seleccionado arriba"
         )
 
+        # Determinar cartera final: manual tiene prioridad
         if cartera_manual.strip():
             cartera_display = cartera_manual.strip()
             cartera = cartera_display.lower().replace(" ", "_").replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u").replace("ñ", "n")
@@ -2516,15 +2954,21 @@ def render_generador():
         )
 
         if usar_fechas_default:
-            fecha_inicio = date(2018, 10, 1)
-            fecha_fin = date(2025, 3, 1)
+            fecha_inicio = "2018-10-01"
+            fecha_fin = "2025-03-01"
             st.info(f"Inicio: {fecha_inicio} | Fin: {fecha_fin}")
         else:
             col_a, col_b = st.columns(2)
             with col_a:
-                fecha_inicio = st.date_input("Fecha inicio", value=date(2018, 10, 1))
+                fecha_inicio = st.text_input(
+                    "Fecha inicio (YYYY-MM-DD)",
+                    value="2018-10-01"
+                )
             with col_b:
-                fecha_fin = st.date_input("Fecha fin historico", value=date(2025, 3, 1))
+                fecha_fin = st.text_input(
+                    "Fecha fin historico (YYYY-MM-DD)",
+                    value="2025-03-01"
+                )
 
     with col2:
         editar_nombres = st.checkbox(
@@ -2535,12 +2979,15 @@ def render_generador():
 
         if editar_nombres:
             st.warning("Cambiar el formato puede romper el flujo. Procede con cuidado.")
+
+            # Generar nombres sugeridos basados en pais y cartera
             nombres_sugeridos = {
                 "hist": f"hist_{pais.lower()}_{cartera.lower()}.xlsx",
                 "base": f"base_{pais.lower()}_{cartera.lower()}.xlsx",
                 "opt": f"opt_{pais.lower()}_{cartera.lower()}.xlsx",
                 "adv": f"adv_{pais.lower()}_{cartera.lower()}.xlsx",
             }
+
             col_h, col_o = st.columns(2)
             with col_h:
                 archivo_hist = st.text_input("Nombre archivo historico", value=nombres_sugeridos["hist"])
@@ -2548,6 +2995,7 @@ def render_generador():
             with col_o:
                 archivo_opt = st.text_input("Nombre archivo optimista", value=nombres_sugeridos["opt"])
                 archivo_adv = st.text_input("Nombre archivo adverso", value=nombres_sugeridos["adv"])
+
             nombres_custom = {
                 "hist": archivo_hist,
                 "opt": archivo_opt,
@@ -2590,32 +3038,38 @@ def render_generador():
 
     if st.button("Generar Notebooks", use_container_width=True, type="primary"):
         try:
+            # Importar funciones del generador si existen
             try:
                 from notebook_generator import (
                     generar_notebook_generador,
                     generar_notebook_motor,
                     generar_nombres_archivos,
                 )
+                gen_importado = True
             except ImportError:
+                gen_importado = False
                 st.error("No se encontro el modulo 'notebook_generator'. Verifica que este en el mismo directorio.")
                 return
 
+            # Generar nombres de archivos
             archivos = generar_nombres_archivos(pais, cartera)
             if nombres_custom:
                 archivos = nombres_custom
 
+            # Generar notebook del GENERADOR
             st.info("Generando notebook del Generador...")
             nb_gen = generar_notebook_generador(
                 str(TEMPLATE_GENERADOR),
                 pais=pais,
                 cartera=cartera,
-                fecha_inicio=fecha_inicio.strftime("%Y-%m-%d"),
-                fecha_fin=fecha_fin.strftime("%Y-%m-%d"),
+                fecha_inicio=fecha_inicio,
+                fecha_fin=fecha_fin,
                 modo_endo=modo_endo,
                 ventana_mm=ventana_mm,
                 nombres_custom=nombres_custom,
             )
 
+            # Generar notebook del MOTOR
             st.info("Generando notebook del Motor...")
             nb_motor = generar_notebook_motor(
                 str(TEMPLATE_MOTOR),
@@ -2626,13 +3080,16 @@ def render_generador():
                 nombres_archivos=archivos,
             )
 
+            # Nombres de salida: usamos cartera_display para que refleje lo que el usuario selecciono
             cartera_slug = cartera.lower().replace(" ", "_")
             nb_gen_name = f"Generacion_Variacion_{pais}_{cartera_slug}.ipynb"
             nb_motor_name = f"Motor_Sarimax_{cartera_slug}_{pais}.ipynb"
 
+            # Convertir notebooks a JSON (string) para descarga individual
             nb_gen_json = json.dumps(nb_gen, ensure_ascii=False, indent=1)
             nb_motor_json = json.dumps(nb_motor, ensure_ascii=False, indent=1)
 
+            # Mostrar resumen
             st.success("Notebooks generados correctamente")
 
             st.markdown(section_title("Resumen de configuracion"), unsafe_allow_html=True)
@@ -2648,8 +3105,11 @@ def render_generador():
 
             st.markdown(section_title("Descargar o abrir en Google Colab"), unsafe_allow_html=True)
 
+            # --- NOTEBOOK GENERADOR ---
             st.markdown("<p style='font-size:14px;font-weight:600;color:{NAVY};margin:8px 0 4px;'>Generador de Variacion</p>".format(NAVY=NAVY), unsafe_allow_html=True)
+
             col_gen1, col_gen2 = st.columns(2)
+
             with col_gen1:
                 st.download_button(
                     label=f"Descargar {nb_gen_name}",
@@ -2658,6 +3118,7 @@ def render_generador():
                     mime="application/json",
                     use_container_width=True,
                 )
+
             with col_gen2:
                 nb_gen_b64 = base64.b64encode(nb_gen_json.encode("utf-8")).decode("utf-8")
                 colab_url_gen = f"https://colab.research.google.com/notebook#data={nb_gen_b64}"
@@ -2667,8 +3128,11 @@ def render_generador():
                     use_container_width=True,
                 )
 
+            # --- NOTEBOOK MOTOR ---
             st.markdown("<p style='font-size:14px;font-weight:600;color:{NAVY};margin:8px 0 4px;'>Motor SARIMAX</p>".format(NAVY=NAVY), unsafe_allow_html=True)
+
             col_mot1, col_mot2 = st.columns(2)
+
             with col_mot1:
                 st.download_button(
                     label=f"Descargar {nb_motor_name}",
@@ -2677,6 +3141,7 @@ def render_generador():
                     mime="application/json",
                     use_container_width=True,
                 )
+
             with col_mot2:
                 nb_motor_b64 = base64.b64encode(nb_motor_json.encode("utf-8")).decode("utf-8")
                 colab_url_motor = f"https://colab.research.google.com/notebook#data={nb_motor_b64}"
@@ -2760,7 +3225,6 @@ if (kb_prev_clicked or kb_next_clicked) and st.session_state.modelos_data and st
             st.session_state.pending_modelo = modelos_list_kb[idx_kb + 1]
             st.rerun()
 
-# Inyección del listener de teclado (solo components.html)
 _KB_SHORTCUT_HTML = """
 <script>
 (function() {
@@ -2791,20 +3255,15 @@ _KB_SHORTCUT_HTML = """
 })();
 </script>
 """
-components.html(_KB_SHORTCUT_HTML, height=0, width=0)
+if hasattr(st, "iframe"):
+    st.iframe(_KB_SHORTCUT_HTML, height=1, width=1)
+else:
+    components.html(_KB_SHORTCUT_HTML, height=0, width=0)
 
 # =========================================================================
 # HEADER Y PESTANAS
 # =========================================================================
-st.markdown(f"""
-<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-    <div>
-        <p style="font-size:22px;font-weight:700;color:{NAVY};margin:0;">SARIMAX / IFRS 9</p>
-        <p style="font-size:12px;color:{MUTED};margin:4px 0 0;">Generador, Dashboard de Modelos y Concatenador</p>
-    </div>
-</div>
-<div style="height:1px;background:{BORDER};margin:12px 0 16px;"></div>
-""", unsafe_allow_html=True)
+render_app_topbar()
 
 tab_gen, tab_dash, tab_concat = st.tabs(["Generador", "Dashboard", "Concatenador"])
 
@@ -2818,20 +3277,20 @@ with tab_gen:
 # TAB: DASHBOARD
 # =========================================================================
 with tab_dash:
-    col_left, col_right = st.columns([1, 4])
+    col_left, col_right = st.columns([1.12, 4])
 
     # --- SIDEBAR DEL DASHBOARD ---
     with col_left:
-        st.markdown(f"<p style='font-size:12px;font-weight:700;color:{NAVY};margin:0 0 10px;letter-spacing:0.5px;'>CARGAR MODELO</p>", unsafe_allow_html=True)
+        st.markdown("<div class='dashboard-sidebar'>", unsafe_allow_html=True)
+        st.markdown(f"<p class='dash-side-title'>Cargar modelo</p>", unsafe_allow_html=True)
+        st.markdown(f"<p style='font-size:10px;color:{MUTED};margin:-2px 0 8px;'>Suba el Excel de la corrida.</p>", unsafe_allow_html=True)
         uploaded = st.file_uploader("Archivo Excel (.xlsx)", type=["xlsx"], label_visibility="collapsed")
         if uploaded is not None:
             st.session_state.uploaded_file = uploaded
             if not st.session_state.modelos_data or uploaded.name != getattr(st.session_state, 'last_file_name', None):
                 with st.spinner("Parseando modelos..."):
-                    # Leer el contenido en bytes para cachear
-                    file_bytes = uploaded.read()
-                    st.session_state.modelos_data = parsear_excel_bytes(file_bytes)
-                    st.session_state.meta_contexto = leer_meta_embebida_bytes(file_bytes)
+                    st.session_state.modelos_data = parsear_excel(uploaded)
+                    st.session_state.meta_contexto = leer_meta_embebida(uploaded)
                     # Si el nuevo archivo tiene metadata embebida, limpiar fallback manual
                     if st.session_state.meta_contexto is not None:
                         st.session_state.meta_contexto_manual = {}
@@ -2870,6 +3329,7 @@ with tab_dash:
             meta_fallback = st.session_state.get("meta_contexto_manual", {})
             meta_display = meta if meta else meta_fallback
 
+            # Formulario manual de metadata (solo si no hay metadata embebida)
             if not meta:
                 with st.expander("Completar metadata manualmente", expanded=not bool(meta_fallback)):
                     _pais = st.selectbox("País", ["Colombia", "Panama", "Costa Rica"], key="manual_pais")
@@ -2907,7 +3367,9 @@ with tab_dash:
                         st.success("Metadata manual aplicada.")
                         st.rerun()
 
-            if encabezado_colapsable("Contexto de la corrida", "sec_contexto"):
+            if st.session_state.get("vista_resumen", False) or st.session_state.get("vista_favoritos", False):
+                render_dashboard_sidebar_summary(meta_display, len(st.session_state.modelos_data))
+            elif encabezado_colapsable("Contexto de la corrida", "sec_contexto"):
                 if meta_display:
                     meta_kpis = extraer_kpis_meta(meta, meta_fallback)
                     c1, c2 = st.columns(2)
@@ -2939,74 +3401,78 @@ with tab_dash:
                         st.markdown(card_kpi("Tipo endogena", tipo_display), unsafe_allow_html=True)
                 else:
                     st.caption("Sin metadata embebida ni manual.")
-            st.markdown(divider(), unsafe_allow_html=True)
-            if encabezado_colapsable("Ordenar y Filtrar", "sec_orden"):
-                criterio = st.radio("Ordenar por:", ["Nombre (A-Z)", "Pruebas aprobadas ↓", "Pruebas aprobadas ↑",
-                                                      "Score global ↓", "Score global ↑"],
-                                    index=["Nombre (A-Z)", "Pruebas aprobadas ↓", "Pruebas aprobadas ↑",
-                                           "Score global ↓", "Score global ↑"].index(st.session_state.criterio_ordenamiento),
-                                    key="criterio_orden")
-                st.session_state.criterio_ordenamiento = criterio
-                st.markdown(f"<p style='font-size:10px;color:{MUTED};margin:8px 0 4px;'>Ljung-Box</p>", unsafe_allow_html=True)
-                filtro_ljung = st.selectbox("Ljung-Box", ["Todos", "A o B (Cumple)", "A, B o C", "Solo A"],
-                                             index=["Todos", "A o B (Cumple)", "A, B o C", "Solo A"].index(st.session_state.filtro_ljung),
-                                             key="filtro_ljung_sel", label_visibility="collapsed")
-                st.session_state.filtro_ljung = filtro_ljung
-                st.markdown(f"<p style='font-size:10px;color:{MUTED};margin:8px 0 4px;'>Jarque-Bera</p>", unsafe_allow_html=True)
-                filtro_jarque = st.selectbox("Jarque-Bera", ["Todos", "A o B (Cumple)", "A, B o C", "Solo A"],
-                                              index=["Todos", "A o B (Cumple)", "A, B o C", "Solo A"].index(st.session_state.filtro_jarque),
-                                              key="filtro_jarque_sel", label_visibility="collapsed")
-                st.session_state.filtro_jarque = filtro_jarque
-                st.markdown(f"<p style='font-size:10px;color:{MUTED};margin:8px 0 4px;'>Heterocedasticidad</p>", unsafe_allow_html=True)
-                filtro_hetero = st.selectbox("Heterocedasticidad", ["Todos", "A o B (Cumple)", "A, B o C", "Solo A"],
-                                              index=["Todos", "A o B (Cumple)", "A, B o C", "Solo A"].index(st.session_state.filtro_hetero),
-                                              key="filtro_hetero_sel", label_visibility="collapsed")
-                st.session_state.filtro_hetero = filtro_hetero
-                st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
-                filtro_favoritos = st.checkbox("Solo favoritos", key="filtro_favoritos_sel",
-                                                value=st.session_state.get("filtro_favoritos", False))
-                st.session_state.filtro_favoritos = filtro_favoritos
-            st.markdown(divider(), unsafe_allow_html=True)
-            modelos_list, pruebas_dict, scores_dict, global_dict = construir_opciones_modelos()
-            if st.session_state.pending_modelo is not None and st.session_state.pending_modelo in modelos_list:
-                st.session_state.modelo_seleccionado = st.session_state.pending_modelo
-                st.session_state["sel_modelo"] = label_modelo(st.session_state.pending_modelo, pruebas_dict, scores_dict, global_dict)
-                st.session_state.pending_modelo = None
-            opciones = [label_modelo(m, pruebas_dict, scores_dict, global_dict) for m in modelos_list]
-            if not modelos_list:
-                st.warning("Ningun modelo cumple con los filtros seleccionados.")
-                st.session_state.modelo_seleccionado = None
-            else:
-                idx = modelos_list.index(st.session_state.modelo_seleccionado) if st.session_state.modelo_seleccionado in modelos_list else 0
-                seleccion = st.selectbox("Modelo", opciones, index=idx, key="sel_modelo")
-                nombre_parseado = seleccion.split("  (")[0]
-                if nombre_parseado.startswith("[F] "):
-                    nombre_parseado = nombre_parseado[4:]
-                st.session_state.modelo_seleccionado = nombre_parseado
-            st.markdown(divider(), unsafe_allow_html=True)
-            st.toggle("Fijar flechas de navegacion", key="nav_sticky",
-                      help="Mantiene los botones Anterior/Siguiente siempre visibles, flotando sobre la pagina al hacer scroll.")
-            guardar_prefs_sidebar()
-            if st.session_state.modelo_seleccionado:
-                datos = st.session_state.modelos_data.get(st.session_state.modelo_seleccionado, {})
-                st.markdown(f"<p style='font-size:11px;font-weight:600;color:{NAVY};margin:12px 0 4px;'>MODELO ACTUAL</p>", unsafe_allow_html=True)
-                st.markdown(f"<p style='font-size:14px;font-weight:700;color:{NAVY};margin:0;'>{st.session_state.modelo_seleccionado}</p>", unsafe_allow_html=True)
-                st.markdown(f"<p style='font-size:11px;color:{MUTED};margin:4px 0 0;'>{datos.get('observaciones', 0)} observaciones</p>", unsafe_allow_html=True)
-                st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
-                boton_favorito(st.session_state.modelo_seleccionado, key_suffix="sidebar")
-                exogenas = datos.get('exogenas_nombres', [])
-                if exogenas:
-                    st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
-                    if encabezado_colapsable("Exogenas", "sec_exogenas"):
-                        coefs = datos.get('coeficientes')
-                        sigs = obtener_significancia_exogenas(coefs, exogenas)
-                        sig_count = sum(1 for _, _, s in sigs if s == "Significativa")
-                        st.markdown(f"<p style='font-size:10px;color:{MUTED};margin:0 0 6px;'>{sig_count} de {len(exogenas)} significativas</p>", unsafe_allow_html=True)
-                        for ex, pval, status in sigs:
-                            color = GREEN if status == "Significativa" else (RED if status == "No significativa" else "#B8860B")
-                            label = "SIG" if status == "Significativa" else ("NO SIG" if status == "No significativa" else "MARG")
-                            p_txt = f"p={pval:.3f}" if pval is not None else "p=N/A"
-                            st.markdown(f'<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0;font-size:11px;"><span style="color:{TEXT}">{ex}</span><span style="color:{color};font-weight:600;">{label} ({p_txt})</span></div>', unsafe_allow_html=True)
+            if not st.session_state.get("vista_resumen", False) and not st.session_state.get("vista_favoritos", False):
+                st.markdown(divider(), unsafe_allow_html=True)
+                if encabezado_colapsable("Ordenar y Filtrar", "sec_orden"):
+                    criterio = st.radio("Ordenar por:", ["Nombre (A-Z)", "Pruebas aprobadas ↓", "Pruebas aprobadas ↑",
+                                                          "Score global ↓", "Score global ↑"],
+                                        index=["Nombre (A-Z)", "Pruebas aprobadas ↓", "Pruebas aprobadas ↑",
+                                               "Score global ↓", "Score global ↑"].index(st.session_state.criterio_ordenamiento),
+                                        key="criterio_orden")
+                    st.session_state.criterio_ordenamiento = criterio
+                    st.markdown(f"<p style='font-size:10px;color:{MUTED};margin:8px 0 4px;'>Ljung-Box</p>", unsafe_allow_html=True)
+                    filtro_ljung = st.selectbox("Ljung-Box", ["Todos", "A o B (Cumple)", "A, B o C", "Solo A"],
+                                                 index=["Todos", "A o B (Cumple)", "A, B o C", "Solo A"].index(st.session_state.filtro_ljung),
+                                                 key="filtro_ljung_sel", label_visibility="collapsed")
+                    st.session_state.filtro_ljung = filtro_ljung
+                    st.markdown(f"<p style='font-size:10px;color:{MUTED};margin:8px 0 4px;'>Jarque-Bera</p>", unsafe_allow_html=True)
+                    filtro_jarque = st.selectbox("Jarque-Bera", ["Todos", "A o B (Cumple)", "A, B o C", "Solo A"],
+                                                  index=["Todos", "A o B (Cumple)", "A, B o C", "Solo A"].index(st.session_state.filtro_jarque),
+                                                  key="filtro_jarque_sel", label_visibility="collapsed")
+                    st.session_state.filtro_jarque = filtro_jarque
+                    st.markdown(f"<p style='font-size:10px;color:{MUTED};margin:8px 0 4px;'>Heterocedasticidad</p>", unsafe_allow_html=True)
+                    filtro_hetero = st.selectbox("Heterocedasticidad", ["Todos", "A o B (Cumple)", "A, B o C", "Solo A"],
+                                                  index=["Todos", "A o B (Cumple)", "A, B o C", "Solo A"].index(st.session_state.filtro_hetero),
+                                                  key="filtro_hetero_sel", label_visibility="collapsed")
+                    st.session_state.filtro_hetero = filtro_hetero
+                    st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
+                    filtro_favoritos = st.checkbox("Solo favoritos", key="filtro_favoritos_sel",
+                                                    value=st.session_state.get("filtro_favoritos", False))
+                    st.session_state.filtro_favoritos = filtro_favoritos
+                st.markdown(divider(), unsafe_allow_html=True)
+            if not st.session_state.get("vista_resumen", False) and not st.session_state.get("vista_favoritos", False):
+                modelos_list, pruebas_dict, scores_dict, global_dict = construir_opciones_modelos()
+                if st.session_state.pending_modelo is not None and st.session_state.pending_modelo in modelos_list:
+                    st.session_state.modelo_seleccionado = st.session_state.pending_modelo
+                    st.session_state["sel_modelo"] = label_modelo(st.session_state.pending_modelo, pruebas_dict, scores_dict, global_dict)
+                    st.session_state.pending_modelo = None
+                opciones = [label_modelo(m, pruebas_dict, scores_dict, global_dict) for m in modelos_list]
+                if not modelos_list:
+                    st.warning("Ningun modelo cumple con los filtros seleccionados.")
+                    st.session_state.modelo_seleccionado = None
+                else:
+                    idx = modelos_list.index(st.session_state.modelo_seleccionado) if st.session_state.modelo_seleccionado in modelos_list else 0
+                    seleccion = st.selectbox("Modelo", opciones, index=idx, key="sel_modelo")
+                    nombre_parseado = seleccion.split("  (")[0]
+                    if nombre_parseado.startswith("[F] "):
+                        nombre_parseado = nombre_parseado[4:]
+                    st.session_state.modelo_seleccionado = nombre_parseado
+                st.markdown(divider(), unsafe_allow_html=True)
+                st.toggle("Fijar flechas de navegacion", key="nav_sticky",
+                          help="Mantiene los botones Anterior/Siguiente siempre visibles, flotando sobre la pagina al hacer scroll.")
+                guardar_prefs_sidebar()
+                if st.session_state.modelo_seleccionado:
+                    datos = st.session_state.modelos_data.get(st.session_state.modelo_seleccionado, {})
+                    st.markdown(f"<p style='font-size:11px;font-weight:600;color:{NAVY};margin:12px 0 4px;'>MODELO ACTUAL</p>", unsafe_allow_html=True)
+                    st.markdown(f"<p style='font-size:14px;font-weight:700;color:{NAVY};margin:0;'>{st.session_state.modelo_seleccionado}</p>", unsafe_allow_html=True)
+                    st.markdown(f"<p style='font-size:11px;color:{MUTED};margin:4px 0 0;'>{datos.get('observaciones', 0)} observaciones</p>", unsafe_allow_html=True)
+                    st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
+                    boton_favorito(st.session_state.modelo_seleccionado, key_suffix="sidebar")
+                    exogenas = datos.get('exogenas_nombres', [])
+                    if exogenas:
+                        st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+                        if encabezado_colapsable("Exogenas", "sec_exogenas"):
+                            coefs = datos.get('coeficientes')
+                            sigs = obtener_significancia_exogenas(coefs, exogenas)
+                            sig_count = sum(1 for _, _, s in sigs if s == "Significativa")
+                            st.markdown(f"<p style='font-size:10px;color:{MUTED};margin:0 0 6px;'>{sig_count} de {len(exogenas)} significativas</p>", unsafe_allow_html=True)
+                            for ex, pval, status in sigs:
+                                color = GREEN if status == "Significativa" else (RED if status == "No significativa" else "#B8860B")
+                                label = "SIG" if status == "Significativa" else ("NO SIG" if status == "No significativa" else "MARG")
+                                p_txt = f"p={pval:.3f}" if pval is not None else "p=N/A"
+                                st.markdown(f'<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0;font-size:11px;"><span style="color:{TEXT}">{ex}</span><span style="color:{color};font-weight:600;">{label} ({p_txt})</span></div>', unsafe_allow_html=True)
+
+        st.markdown("</div>", unsafe_allow_html=True)
 
     # --- PANEL PRINCIPAL DEL DASHBOARD ---
     with col_right:
@@ -3083,12 +3549,12 @@ with tab_dash:
                     if ok:
                         st.success("✅ Documento generado. Descarga abajo.")
                     st.rerun()
-
+            # =====================================================================
             modelos_list, pruebas_dict_nav, scores_dict_nav, global_dict_nav = construir_opciones_modelos()
             current_idx = modelos_list.index(st.session_state.modelo_seleccionado) if st.session_state.modelo_seleccionado in modelos_list else 0
             tab_resumen, tab1, tab2, tab3, tab4 = st.tabs(["Resumen Modelo", "Visualizacion", "Predicciones", "Diagnosticos", "Comparar"])
-
             # TAB 0: RESUMEN MODELO
+            # =====================================================================
             with tab_resumen:
                 st.markdown(section_title("Factor FWL a 12 meses"), unsafe_allow_html=True)
                 df_fwl_resumen = datos.get('fwl_12m')
@@ -3100,8 +3566,9 @@ with tab_dash:
                 render_diagnosticos_corporativo(datos.get('pruebas'), mostrar_detalle_tecnico=False)
                 st.markdown(divider(), unsafe_allow_html=True)
                 render_seccion_coeficientes(datos, key_prefix="resumen")
-
+            # =====================================================================
             # TAB 1: VISUALIZACION
+            # =====================================================================
             with tab1:
                 st.markdown(section_title("Exogenas activas"), unsafe_allow_html=True)
                 exogenas = datos.get('exogenas_nombres', [])
@@ -3115,8 +3582,7 @@ with tab_dash:
                         with chip_cols[i % n_cols]:
                             activo = ex in st.session_state.exog_sel[modelo_key]
                             label = f"[x] {ex}" if activo else f"[ ] {ex}"
-                            sanitized = _sanitizar_key(f"chip_{modelo_key}_{ex}")
-                            if st.button(label, key=sanitized, use_container_width=True):
+                            if st.button(label, key=f"chip_{modelo_key}_{ex}", use_container_width=True):
                                 if activo:
                                     st.session_state.exog_sel[modelo_key].remove(ex)
                                 else:
@@ -3185,8 +3651,9 @@ with tab_dash:
                         st.info("No se pudo calcular el FWL ponderado.")
                 elif suma > 1.0:
                     st.warning("Ajuste los pesos para que la suma no exceda 1.0")
-
+            # =====================================================================
             # TAB 2: PREDICCIONES
+            # =====================================================================
             with tab2:
                 st.markdown(section_title("Datos de prediccion"), unsafe_allow_html=True)
                 filtros = st.columns(4)
@@ -3226,8 +3693,9 @@ with tab_dash:
                     st.download_button("Descargar CSV", csv, f"predicciones_{st.session_state.modelo_seleccionado}.csv", "text/csv")
                 else:
                     st.info("No hay datos de predicciones.")
-
+            # =====================================================================
             # TAB 3: DIAGNOSTICOS
+            # =====================================================================
             with tab3:
                 st.markdown(render_leyenda_scores(), unsafe_allow_html=True)
                 pruebas = datos.get('pruebas')
@@ -3258,8 +3726,9 @@ with tab_dash:
                     st.info("No hay datos de residuos.")
                 st.markdown(divider(), unsafe_allow_html=True)
                 render_seccion_coeficientes(datos, key_prefix="diag")
-
+            # =====================================================================
             # TAB 4: COMPARAR
+            # =====================================================================
             with tab4:
                 st.markdown(section_title("Comparador de modelos"), unsafe_allow_html=True)
                 st.markdown(f"<p style='font-size:11px;color:{MUTED};margin:0 0 10px;'>Seleccione hasta 3 modelos para comparar lado a lado.</p>", unsafe_allow_html=True)
@@ -3277,7 +3746,6 @@ with tab_dash:
                             render_columna_comparacion(nombre_comp, i_comp)
                 else:
                     st.info("Seleccione al menos un modelo para iniciar la comparacion.")
-
             st.markdown(divider(), unsafe_allow_html=True)
             cfinal1, cfinal2, cfinal3 = st.columns([1.3, 1, 1])
             with cfinal1:
@@ -3306,7 +3774,7 @@ with tab_dash:
                     use_container_width=True
                 )
 
-            # Bottom nav bar
+            # --- Bottom nav bar ---
             nav_sticky = st.session_state.get("nav_sticky", True)
             if nav_sticky:
                 st.markdown(f"""
@@ -3362,20 +3830,19 @@ with tab_dash:
 # TAB: CONCATENADOR
 # =========================================================================
 with tab_concat:
-    if CONCATENADOR_DISPONIBLE and render_concatenador is not None:
-        render_concatenador(
-            NAVY=NAVY,
-            BLUE=BLUE,
-            GREEN=GREEN,
-            RED=RED,
-            GRAY=GRAY,
-            LTGRAY=LTGRAY,
-            TEXT=TEXT,
-            MUTED=MUTED,
-            BG=BG,
-            WHITE=WHITE,
-            BORDER=BORDER,
-            TINT=TINT
-        )
-    else:
-        st.warning("El módulo 'ui_concatenador' no está disponible. Verifica que el archivo exista en el mismo directorio.")
+    from ui_concatenador import render_concatenador
+
+    render_concatenador(
+        NAVY=NAVY,
+        BLUE=BLUE,
+        GREEN=GREEN,
+        RED=RED,
+        GRAY=GRAY,
+        LTGRAY=LTGRAY,
+        TEXT=TEXT,
+        MUTED=MUTED,
+        BG=BG,
+        WHITE=WHITE,
+        BORDER=BORDER,
+        TINT=TINT
+    )
